@@ -29,10 +29,19 @@ export PATH="$REPO_DIR:$PATH"
 # Configurable NVIDIA driver version (default: 580-server-open)
 DRIVER_VERSION="${DRIVER_VERSION:-580-server-open}"
 
-# GPU mode: determined by flags or user prompt (exported for install.sh)
+# GPU mode: determined by flags, persisted prefs, or user prompt (exported for install.sh)
 GPU_MODE="${OPENMONO_GPU:-}"
 if [[ -n "${OPENMONO_CPU:-}" ]]; then
     GPU_MODE=0
+fi
+# If not set by a flag, restore from a previous interrupted run
+if [[ -z "$GPU_MODE" && -f "$HOME/.openmono/.setup_prefs" ]]; then
+    _saved_gpu=$(grep '^GPU_MODE=' "$HOME/.openmono/.setup_prefs" | cut -d= -f2 | tr -d '[:space:]')
+    if [[ -n "$_saved_gpu" ]]; then
+        GPU_MODE="$_saved_gpu"
+        # Defer the "restoring" message until after log.sh helpers are confirmed sourced
+        _GPU_MODE_RESTORED=true
+    fi
 fi
 export GPU_MODE
 
@@ -160,28 +169,46 @@ elif grep -qi "0x10de" /sys/bus/pci/devices/*/vendor 2>/dev/null; then
     detail "NVIDIA GPU detected via PCI vendor ID (0x10de)"
 fi
 
-# Determine GPU mode: explicit flag takes precedence, then auto-detect with prompt
-if [[ -z "$GPU_MODE" ]]; then
-    # No flag provided — auto-detect and prompt if NVIDIA hardware is found
-    if [ "$HAS_NVIDIA_HW" = true ] || command -v nvidia-smi &>/dev/null; then
+# Determine GPU mode: explicit flag / persisted pref takes precedence, then auto-detect with prompt
+if [[ -n "$GPU_MODE" ]]; then
+    if [[ "${_GPU_MODE_RESTORED:-false}" == "true" ]]; then
+        info "Restoring saved GPU mode from previous session: ${BOLD}$([ "$GPU_MODE" = "1" ] && echo GPU || echo CPU)${NC}"
+    fi
+elif [ "$HAS_NVIDIA_HW" = true ] || command -v nvidia-smi &>/dev/null; then
+    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null 2>&1; then
+        # Driver is already loaded and active (e.g. post-reboot re-run) — skip prompt
+        GPU_MODE=1
+        ok "NVIDIA GPU detected and driver active — GPU mode enabled"
+    else
+        # Hardware present but driver not yet active — ask the user
         echo ""
         printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
         printf "${BLUE}${BOLD}  NVIDIA GPU Detected${NC}\n"
         printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
         echo ""
-        printf "  Would you like to install on GPU? ${BOLD}(Y/n)${NC}: "
-        read -r _gpu_choice
-        _gpu_choice="${_gpu_choice:-Y}"
-        if [[ "$_gpu_choice" =~ ^[Yy]$ ]]; then
-            GPU_MODE=1
-        else
-            GPU_MODE=0
+        _gpu_invalid=0
+        while true; do
+            [ "$_gpu_invalid" -eq 1 ] && printf "  ${RED}Please press Y or N.${NC}\n\n"
+            printf "  Would you like to install on GPU? ${BOLD}(Y/n)${NC}: "
+            read -r -n 1 _gpu_choice
+            echo ""
+            case "${_gpu_choice:-Y}" in
+                [Yy]) GPU_MODE=1; break ;;
+                [Nn]) GPU_MODE=0; break ;;
+                *)    _gpu_invalid=1 ;;
+            esac
+        done
+        _save_setup_pref "GPU_MODE" "$GPU_MODE"
+        if [ "$GPU_MODE" = "1" ]; then
+            echo ""
+            info "NVIDIA drivers will be installed. They will only become active after a reboot."
+            info "Setup will continue normally — you will be prompted to reboot at the end."
         fi
         echo ""
-    else
-        # No NVIDIA hardware detected
-        GPU_MODE=0
     fi
+else
+    # No NVIDIA hardware detected
+    GPU_MODE=0
 fi
 
 if [ "$GPU_MODE" = 0 ]; then
@@ -213,28 +240,7 @@ else
 
         run $SUDO ubuntu-drivers autoinstall || warn "Driver install had warnings — check log"
         ok "NVIDIA drivers installed"
-
-        echo ""
-        printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
-        printf "${BLUE}${BOLD}  NVIDIA drivers installed — reboot required${NC}\n"
-        printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
-        echo ""
-        printf "  Would you like to reboot now? ${BOLD}(Y/n)${NC}: "
-        read -r _reboot_choice
-        _reboot_choice="${_reboot_choice:-Y}"
-
-        if [[ "$_reboot_choice" =~ ^[Yy]$ ]]; then
-            echo ""
-            info "After reboot, run: ${BOLD}$REPO_DIR/openmono setup${NC}"
-            echo ""
-            info "Rebooting in 10 seconds (press Ctrl+C to cancel)..."
-            sleep 10
-            $SUDO reboot
-        else
-            err "Reboot cancelled. NVIDIA drivers will not be functional until rebooted."
-            err "Run: sudo reboot"
-            exit 1
-        fi
+        NVIDIA_REBOOT_PENDING=true
     fi
 
     # CUDA toolkit (optional — pre-built images include CUDA)
@@ -486,6 +492,48 @@ echo ""
 ok "Prerequisites ready"
 echo ""
 show_log_location
+
+# ── Deferred reboot prompt (NVIDIA drivers installed this run) ────────────────
+
+if [ "${NVIDIA_REBOOT_PENDING:-false}" = "true" ]; then
+    _reboot_done_file="$HOME/.openmono/.nvidia_reboot_done"
+    if [ -f "$_reboot_done_file" ] || (command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null 2>&1); then
+        ok "NVIDIA drivers are active — no reboot needed"
+    else
+        echo ""
+        printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
+        printf "${BLUE}${BOLD}  Reboot Required${NC}\n"
+        printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
+        echo ""
+        info "NVIDIA drivers are installed but will only become active after a reboot."
+        echo ""
+        _reboot_invalid=0
+        while true; do
+            [ "$_reboot_invalid" -eq 1 ] && printf "  ${RED}Please press Y or N.${NC}\n\n"
+            printf "  Would you like to reboot now? ${BOLD}(Y/n)${NC}: "
+            read -r -n 1 _reboot_choice
+            echo ""
+            case "${_reboot_choice:-Y}" in
+                [Yy]) _reboot_choice=Y; break ;;
+                [Nn]) _reboot_choice=N; break ;;
+                *)    _reboot_invalid=1 ;;
+            esac
+        done
+
+        if [[ "$_reboot_choice" == "Y" ]]; then
+            touch "$_reboot_done_file"
+            echo ""
+            info "After reboot, run: ${BOLD}$REPO_DIR/openmono setup${NC}"
+            echo ""
+            info "Rebooting in 10 seconds (press Ctrl+C to cancel)..."
+            sleep 10
+            $SUDO reboot
+        else
+            warn "Reboot skipped. NVIDIA drivers will not be active until you reboot."
+            warn "Run: sudo reboot"
+        fi
+    fi
+fi
 
 # Write GPU_MODE to the shared env file so install.sh picks it up without re-detecting
 if [[ -n "${OPENMONO_ENV_FILE:-}" ]]; then

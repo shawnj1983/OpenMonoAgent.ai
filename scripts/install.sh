@@ -621,6 +621,10 @@ if [ -w /usr/local/bin ] || [ -n "${SUDO:-}" ]; then
     fi
 fi
 
+# Installation completed successfully — clear persisted setup choices so a
+# future `openmono setup` run starts fresh rather than restoring stale prefs.
+clear_setup_prefs
+
 # Write environment to the file passed by openmono cmd_setup
 if [[ -n "${OPENMONO_ENV_FILE:-}" ]]; then
     cat > "$OPENMONO_ENV_FILE" <<ENVEOF
