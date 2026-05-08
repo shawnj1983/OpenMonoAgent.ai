@@ -39,11 +39,12 @@ if command -v docker &>/dev/null && ! docker info &>/dev/null 2>&1; then
             info "Re-launching with docker group active (no manual 'newgrp' needed)..."
             exec sg docker -- bash "$0" "$@"
         else
-            warn "Docker group membership exists but sg activation failed."
-            warn "Run ONE of the following, then re-run: openmono setup"
-            warn "  1. newgrp docker"
-            warn "  2. exec su -l \$USER"
-            warn "  3. Log out and back in"
+            err "Docker group membership exists but sg activation failed."
+            err "Run ONE of the following to activate the docker group:"
+            err "  1. newgrp docker"
+            err "  2. exec su -l \$USER"
+            err "  3. Log out and back in"
+            err "Then resume installation with:  $INSTALL_DIR/openmono setup"
             exit 1
         fi
     fi

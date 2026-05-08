@@ -370,12 +370,33 @@ if [ "$INSTALL_DOCKER_CE" = true ] || ! command -v docker &>/dev/null; then
             info "Re-launching with docker group active (no manual 'newgrp' needed)..."
             exec sg docker -- bash "$0" "$@"
         else
-            warn "Docker group added but sg activation failed — a shell restart is needed."
-            warn "After this script completes run ONE of the following, then re-run install.sh:"
-            warn "  1. newgrp docker           (activate in current shell)"
-            warn "  2. exec su -l \$USER       (fresh login shell)"
-            warn "  3. Log out and back in"
+            err "Docker group added but sg activation failed — a shell restart is needed."
+            err "Run ONE of the following to activate the docker group:"
+            err "  1. newgrp docker"
+            err "  2. exec su -l \$USER"
+            err "  3. Log out and back in"
+            err "Then resume installation with:  $REPO_DIR/openmono setup"
+            exit 1
         fi
+    fi
+fi
+
+# Ensure user is in the docker group even when Docker was pre-installed.
+if command -v docker &>/dev/null && ! id -nG 2>/dev/null | grep -qw docker; then
+    run $SUDO groupadd docker 2>/dev/null || true
+    run $SUDO usermod -aG docker "$USER" || true
+    ok "Added '$USER' to the docker group"
+    if command -v sg &>/dev/null && sg docker -c "docker info" &>/dev/null 2>&1; then
+        info "Re-launching with docker group active (no manual 'newgrp' needed)..."
+        exec sg docker -- bash "$0" "$@"
+    else
+        err "Docker group added but sg activation failed — a shell restart is needed."
+        err "Run ONE of the following to activate the docker group:"
+        err "  1. newgrp docker"
+        err "  2. exec su -l \$USER"
+        err "  3. Log out and back in"
+        err "Then resume installation with:  openmono setup"
+        exit 1
     fi
 fi
 
