@@ -261,6 +261,10 @@ fi
 
 fi # end agent-role GPU skip
 
+# Write GPU_MODE back to parent so install.sh doesn't re-detect independently
+mkdir -p "$HOME/.openmono"
+echo "GPU_MODE=$GPU_MODE" > "$HOME/.openmono/.tmp_gpu_mode"
+
 # ── Step 6: Docker ────────────────────────────────────────────────────────────
 
 step 6 $TOTAL_STEPS "Installing Docker"

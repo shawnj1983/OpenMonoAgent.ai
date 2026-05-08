@@ -227,6 +227,15 @@ cmd_setup() {
         exit 1
     }
 
+    # Propagate GPU_MODE chosen in install_prereqs.sh to install.sh.
+    # Child processes can't modify the parent environment, so prereqs writes the
+    # choice to a temp file; we read it here before launching install.sh.
+    if [[ -z "${OPENMONO_GPU:-}" && -f "$HOME/.openmono/.tmp_gpu_mode" ]]; then
+        _gpu_val=$(grep '^GPU_MODE=' "$HOME/.openmono/.tmp_gpu_mode" | cut -d= -f2 | tr -d '[:space:]')
+        [[ "$_gpu_val" == "1" ]] && export OPENMONO_GPU=1 || export OPENMONO_GPU=0
+        rm -f "$HOME/.openmono/.tmp_gpu_mode"
+    fi
+
     # install_prereqs.sh may have just added the user to the docker group.
     # The current shell won't see that membership until a new session starts.
     # Re-exec the whole openmono setup under sg docker so install.sh runs
