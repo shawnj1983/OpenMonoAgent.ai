@@ -225,7 +225,7 @@ else
 
         if [[ "$_reboot_choice" =~ ^[Yy]$ ]]; then
             echo ""
-            info "After reboot, run: ${BOLD}openmono setup${NC}"
+            info "After reboot, run: ${BOLD}$REPO_DIR/openmono setup${NC}"
             echo ""
             info "Rebooting in 10 seconds (press Ctrl+C to cancel)..."
             sleep 10
