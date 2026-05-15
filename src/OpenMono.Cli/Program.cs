@@ -1,3 +1,4 @@
+using OpenMono.Acp;
 using OpenMono.Commands;
 using OpenMono.Config;
 using OpenMono.History;
@@ -17,6 +18,8 @@ string? endpoint = null, model = null, workdir = null, configPath = null;
 var verbose = false;
 var showDetail = false;
 bool? useTui = null;
+var noAcp = false;
+int? acpPort = null;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -33,6 +36,8 @@ for (var i = 0; i < args.Length; i++)
         case "--detail": showDetail = true; break;
         case "--tui": useTui = true; break;
         case "--classic": useTui = false; break;
+        case "--no-acp": noAcp = true; break;
+        case "--acp-port" when next is not null && int.TryParse(next, out var p): acpPort = p; i++; break;
         case "--help" or "-h":
             Console.WriteLine("OpenMono.ai — Local Coding Agent");
             Console.WriteLine();
@@ -47,6 +52,8 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine("  --detail           Show the right-hand detail panel in the TUI");
             Console.WriteLine("  --tui              Force full-screen TUI mode (default for interactive)");
             Console.WriteLine("  --classic          Force classic scrolling terminal mode");
+            Console.WriteLine("  --no-acp           Do not start the ACP agent server alongside the TUI");
+            Console.WriteLine("  --acp-port <n>     ACP server port (default: 7475 or acpServer.Port in config)");
             Console.WriteLine("  --help, -h         Show this help message");
             Console.WriteLine("  --version          Show version");
             Console.WriteLine();
@@ -82,10 +89,10 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 
-await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui);
+await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui, noAcp, acpPort);
 return 0;
 
-static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null)
+static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null, bool noAcp = false, int? acpPort = null)
 {
 
     IRenderer renderer = new TerminalRenderer();
@@ -189,6 +196,15 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
         Enabled = kv.Value.Enabled,
     });
     await mcpManager.InitializeAsync(mcpConfigs, tools, CancellationToken.None);
+
+    var acp = config.AcpServer ?? new AcpServerSettings();
+    if (acp.Enabled && !noAcp)
+    {
+        if (acpPort.HasValue) acp.Port = acpPort.Value;
+        var acpCts = new CancellationTokenSource();
+        _ = AcpServer.StartAsync(acp, config, llm, tools, acpCts.Token);
+        renderer.WriteInfo($"ACP server listening on http://127.0.0.1:{acp.Port}");
+    }
 
     var checkpointer = new Checkpointer(llm, config.Llm.ContextSize);
 

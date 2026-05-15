@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using OpenMono.Acp;
 
 namespace OpenMono.Config;
 
@@ -11,6 +12,7 @@ public sealed class AppConfig
     public Dictionary<string, ProviderSettings> Providers { get; set; } = [];
     public Dictionary<string, ModelPresetSettings> ModelPresets { get; set; } = [];
     public Dictionary<string, McpServerSettings> McpServers { get; set; } = [];
+    public AcpServerSettings? AcpServer { get; set; }
     public bool AutoDetectCodeGraph { get; set; } = true;
     public bool Verbose { get; set; } = false;
     public bool ShowDetail { get; set; } = false;
