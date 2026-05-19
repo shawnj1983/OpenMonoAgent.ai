@@ -19,6 +19,47 @@ INSTALL_DIR="$(dirname "$SCRIPT_DIR")"  # repo root (parent of scripts/)
 # shellcheck source=lib/log.sh
 source "$SCRIPT_DIR/lib/log.sh"
 
+# Selects the right model for the host's Apple Silicon unified memory tier.
+# Arg $1: host RAM in GB (integer). Sets MODEL_NAME, MODEL_URL, MODEL_ACCURACY,
+# MODEL_ALIAS, _MODEL_LABEL, _CTX_SIZE.
+#
+# Architecture refs (Qwen3 technical report):
+#   35B A3B MoE  — 94 layers, 4 KV heads, head_dim 128 → KV ~18.5 GB @ q8_0/196608
+#   27B dense    — 52 layers, 8 KV heads, head_dim 128 → KV  ~6.5 GB @ q8_0/65536
+#   9B dense     — 36 layers, 8 KV heads, head_dim 128 → KV  ~1.1 GB @ q8_0/16384
+select_model() {
+    local ram_gb="${1:-0}"
+    if [ "$ram_gb" -ge 48 ]; then
+        # ~17.6 GB weights + ~18.5 GB KV + ~6 GB OS ≈ 42 GB on 48 GB Mac
+        MODEL_NAME="Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
+        MODEL_URL="https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
+        MODEL_ACCURACY="standard"
+        _MODEL_LABEL="Qwen3.6-35B-A3B (~17.6GB) [Apple Silicon >=48GB — standard]"
+        _CTX_SIZE=196608
+    elif [ "$ram_gb" -ge 32 ]; then
+        # ~12 GB weights + ~6.5 GB KV + ~6 GB OS ≈ 24.5 GB on 32 GB Mac
+        MODEL_NAME="Qwen3.6-27B-UD-IQ3_XXS.gguf"
+        MODEL_URL="https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/resolve/main/Qwen3.6-27B-UD-IQ3_XXS.gguf"
+        MODEL_ACCURACY="lower"
+        _MODEL_LABEL="Qwen3.6-27B-UD-IQ3_XXS (~12GB) [Apple Silicon 32GB — lower accuracy]"
+        _CTX_SIZE=65536
+    elif [ "$ram_gb" -ge 16 ]; then
+        # ~5 GB weights + ~1.1 GB KV + ~6 GB OS ≈ 12 GB on 16 GB Mac
+        MODEL_NAME="Qwen3.5-9B-Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+        MODEL_ACCURACY="lower"
+        _MODEL_LABEL="Qwen3.5-9B-Q4_K_M (~5GB) [Apple Silicon 16GB — lower accuracy]"
+        _CTX_SIZE=16384
+    else
+        MODEL_NAME="Qwen3.5-9B-Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+        MODEL_ACCURACY="lower"
+        _MODEL_LABEL="Qwen3.5-9B-Q4_K_M (~5GB) [Apple Silicon <16GB]"
+        _CTX_SIZE=8192
+    fi
+    MODEL_ALIAS="${MODEL_NAME%.gguf}"
+}
+
 # Initialize Homebrew in PATH (installed by install_prereqs_macos.sh)
 # Detect architecture to set correct Homebrew prefix
 ARCH=$(uname -m)
@@ -31,6 +72,14 @@ fi
 if [ -d "$BREW_PREFIX" ]; then
     eval "$("$BREW_PREFIX"/bin/brew shellenv)"
     export PATH="$BREW_PREFIX/bin:$PATH"
+fi
+
+# Intel Macs have no unified memory and no Metal GPU — inference is unsupported.
+if [ "$ARCH" != "arm64" ]; then
+    if [ "${OPENMONO_ROLE:-}" = "full" ] || [ "${OPENMONO_ROLE:-}" = "inference" ]; then
+        die "Full/inference roles require Apple Silicon (arm64). Intel Mac detected.
+Use the 'agent' role on this machine and point it at a separate inference server."
+    fi
 fi
 
 # Role selector — drives which of the install steps actually run.
@@ -55,7 +104,7 @@ banner "OpenMono.ai Installer (role: $OPENMONO_ROLE) — macOS"
 CURRENT_STEP=0
 next_step() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
-    step $CURRENT_STEP $TOTAL_STEPS "$1"
+    step "$CURRENT_STEP" "$TOTAL_STEPS" "$1"
 }
 
 # ── Prerequisite Check ────────────────────────────────────────────────────────
@@ -136,15 +185,19 @@ ok "Install directory: $INSTALL_DIR"
 
 next_step "Checking system requirements"
 
-# RAM — macOS always runs CPU mode (Docker runs in a Linux VM, no GPU passthrough)
-# Only relevant for roles that load a model locally
-if [ "$OPENMONO_ROLE" != "agent" ] && command -v sysctl &>/dev/null; then
+# Detect unified memory and select model for this machine's tier.
+TOTAL_MEM=0
+if command -v sysctl &>/dev/null; then
     TOTAL_MEM=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1024 / 1024 / 1024 ))
-    if [ "$TOTAL_MEM" -lt 20 ]; then
-        warn "Only ${TOTAL_MEM}GB RAM detected — CPU model needs ~20GB. It may be slow or fail to load."
-    else
-        ok "RAM: ${TOTAL_MEM}GB"
+fi
+
+if [ "$OPENMONO_ROLE" != "agent" ]; then
+    if [ "$TOTAL_MEM" -lt 16 ]; then
+        die "Only ${TOTAL_MEM}GB RAM detected. 16GB unified memory is the minimum for inference.
+Upgrade to a Mac with at least 16GB, or use the 'agent' role and connect to a separate inference server."
     fi
+    select_model "$TOTAL_MEM"
+    ok "Apple Silicon ${TOTAL_MEM}GB → $_MODEL_LABEL (ctx: $_CTX_SIZE)"
 fi
 
 # Detect pip/pip3 for optional python deps (should be available from install_prereqs)
@@ -186,13 +239,12 @@ cd "$INSTALL_DIR"
 # ── Step 4: Download model (inference + full only) ────────────────────────────
 
 if [ "$OPENMONO_ROLE" != "agent" ]; then
-    next_step "Downloading Qwen3.6-35B-A3B model (~18.5 GB)"
+    next_step "Downloading $_MODEL_LABEL"
 
     MODEL_DIR="$INSTALL_DIR/models"
-    MODEL_NAME="qwen3.6-35b-a3b-ud-q4_k_xl.gguf"
     MODEL_FILE="$MODEL_DIR/$MODEL_NAME"
-    MODEL_URL="https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
-    MODEL_MIN_BYTES=$((1024 * 1024 * 1024))  # 1 GB sanity check (real file ~18.5 GB)
+    # MODEL_NAME and MODEL_URL set by select_model() in Step 2
+    MODEL_MIN_BYTES=$((1024 * 1024 * 1024))  # 1 GB sanity check
 
     mkdir -p "$MODEL_DIR"
 
@@ -304,54 +356,59 @@ if [ "$OPENMONO_ROLE" != "inference" ]; then
     fi
 fi
 
-# ── Step 6: Docker configuration (inference + full only) ──────────────────────
+# ── Step 6: Install llama.cpp (inference + full only) ─────────────────────────
 
 if [ "$OPENMONO_ROLE" != "agent" ]; then
-    next_step "Configuring Docker for inference"
+    next_step "Installing llama.cpp (Metal)"
 
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "arm64" ]; then
-        ok "Apple Silicon (M-series) detected — using CPU mode in Docker"
+    # llama.cpp from Homebrew runs natively on the host, enabling Metal GPU
+    # acceleration on Apple Silicon. The agent Docker container reaches it via
+    # host.docker.internal, which Docker Desktop resolves automatically on macOS.
+    if ! command -v llama-server &>/dev/null; then
+        info "Installing llama.cpp via Homebrew..."
+        run brew install llama.cpp || die "brew install llama.cpp failed"
     else
-        ok "Intel Mac detected — using CPU mode"
+        ok "llama-server already installed: $(command -v llama-server)"
     fi
 
-    # On macOS, Docker runs in a Linux VM — no direct Metal GPU passthrough.
-    # We always use CPU mode, tuned to physical core count.
-    OVERRIDE_FILE="$INSTALL_DIR/docker/docker-compose.override.yml"
-    info "Writing CPU override: $OVERRIDE_FILE"
+    # Write the full inference config to ~/.openmono/settings.json.
+    # This is the single source of truth for all runtime commands (start/stop/status).
+    SETTINGS_FILE="$HOME/.openmono/settings.json"
+    mkdir -p "$(dirname "$SETTINGS_FILE")"
+    [ ! -f "$SETTINGS_FILE" ] && echo '{}' > "$SETTINGS_FILE"
 
-    # Detect physical core count (macOS specific)
-    CPU_THREADS="$(sysctl -n hw.physicalcpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
+    # Generate a new API key for this install
+    LLAMA_API_KEY="$(openssl rand -hex 24)"
 
-    # Derive model alias (strip .gguf extension)
-    MODEL_ALIAS="${MODEL_NAME%.gguf}"
-
-    cat > "$OVERRIDE_FILE" <<EOF
-# CPU configuration — macOS (Docker runs in Linux VM, no Metal GPU passthrough)
-services:
-  llama-server:
-    image: ghcr.io/ggml-org/llama.cpp:server-vulkan
-    command: >
-      --model /models/$MODEL_NAME
-      --alias $MODEL_ALIAS
-      --host 0.0.0.0
-      --port 7474
-      --ctx-size 196608
-      --threads $CPU_THREADS
-      --threads-batch $CPU_THREADS
-      --batch-size 2048
-      --ubatch-size 1024
-      --flash-attn on
-      --cache-type-k q8_0
-      --cache-type-v q8_0
-      --parallel 1
-      --jinja
-      --reasoning off
-      --metrics
-      \${LLAMA_API_KEY:+--api-key \${LLAMA_API_KEY}}
-EOF
-    ok "CPU override written (threads: $CPU_THREADS, context: 196608)"
+    python3 - "$SETTINGS_FILE" \
+        "${LLAMA_PORT:-7474}" \
+        "$MODEL_NAME" \
+        "$MODEL_ALIAS" \
+        "$_CTX_SIZE" \
+        "$INSTALL_DIR" \
+        "$LLAMA_API_KEY" <<'PYEOF'
+import json, sys
+path, port, model_name, model_alias, ctx_size, install_dir, api_key = sys.argv[1:8]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault("llm", {})["endpoint"] = f"http://host.docker.internal:{port}"
+cfg["inference"] = {
+    "mode": "native-metal",
+    "model_name": model_name,
+    "model_alias": model_alias,
+    "ctx_size": int(ctx_size),
+    "port": int(port),
+    "install_dir": install_dir,
+    "api_key": api_key
+}
+with open(path, "w") as f:
+    json.dump(cfg, f, indent=2)
+PYEOF
+    ok "Inference config written to: $SETTINGS_FILE"
+    detail "  model     : $MODEL_NAME"
+    detail "  ctx_size  : $_CTX_SIZE"
+    detail "  endpoint  : http://host.docker.internal:${LLAMA_PORT:-7474}"
+    detail "  api_key   : [generated, stored in settings.json]"
 fi
 
 # ── Step 7: Build Docker images ────────────────────────────────────────────────
@@ -372,14 +429,7 @@ fi
 info "Stopping any running containers..."
 run $DOCKER_COMPOSE_CMD down || true
 
-# Only build the images this role actually needs.
-if [ "$OPENMONO_ROLE" != "agent" ]; then
-    info "Building llama-server image..."
-    if ! run $DOCKER_COMPOSE_CMD build llama-server; then
-        die "llama-server build failed"
-    fi
-fi
-
+# macOS inference runs natively via llama.cpp (Metal) — only the agent image is needed.
 if [ "$OPENMONO_ROLE" != "inference" ]; then
     info "Building agent image..."
     if ! run $DOCKER_COMPOSE_CMD build agent; then
@@ -389,36 +439,49 @@ fi
 
 ok "Docker images built"
 
-# ── Step 8: Start llama-server (inference + full only) ────────────────────────
+# ── Step 8: Start llama-server natively (inference + full only) ───────────────
 
 if [ "$OPENMONO_ROLE" != "agent" ]; then
-    next_step "Starting llama-server"
+    next_step "Starting llama-server (Metal)"
 
     LLAMA_PORT="${LLAMA_PORT:-7474}"
+    LLAMA_LOG="$HOME/.openmono/logs/llama-server.log"
+    mkdir -p "$(dirname "$LLAMA_LOG")"
 
-    port_in_use() {
-        lsof -i ":${1}" &>/dev/null 2>&1
-    }
-
-    if port_in_use "$LLAMA_PORT"; then
-        warn "Port ${LLAMA_PORT} is in use"
-        for try in 8081 8082 8083 8084 8085 9080; do
-            if ! port_in_use "$try"; then
-                LLAMA_PORT="$try"
-                info "Using port $LLAMA_PORT instead"
-                break
-            fi
-        done
+    # Kill any existing process on this port before starting fresh.
+    if lsof -i ":${LLAMA_PORT}" &>/dev/null 2>&1; then
+        warn "Port ${LLAMA_PORT} already in use — stopping existing process"
+        lsof -ti ":${LLAMA_PORT}" | xargs kill -9 2>/dev/null || true
+        sleep 1
     fi
 
     export LLAMA_PORT
 
-    info "Starting daemon on port ${LLAMA_PORT}..."
-    if ! run $DOCKER_COMPOSE_CMD up -d llama-server; then
-        die "Failed to start llama-server (check: $DOCKER_COMPOSE_CMD logs llama-server)"
-    fi
+    CPU_THREADS="$(sysctl -n hw.physicalcpu 2>/dev/null || echo 4)"
 
-    info "Waiting for llama-server to become healthy (model load can take 1-2 min)..."
+    # --n-gpu-layers 99 offloads all layers to Metal; llama.cpp auto-detects the
+    # Metal backend on arm64 without any additional flags.
+    nohup llama-server \
+        --model "$MODEL_FILE" \
+        --alias "$MODEL_ALIAS" \
+        --host 0.0.0.0 \
+        --port "$LLAMA_PORT" \
+        --n-gpu-layers 99 \
+        --ctx-size "$_CTX_SIZE" \
+        --threads "$CPU_THREADS" \
+        --batch-size 2048 \
+        --ubatch-size 512 \
+        --flash-attn \
+        --cache-type-k q8_0 \
+        --cache-type-v q8_0 \
+        --parallel 1 \
+        --jinja \
+        --reasoning off \
+        --metrics \
+        ${LLAMA_API_KEY:+--api-key ${LLAMA_API_KEY}} \
+        > "$LLAMA_LOG" 2>&1 &
+
+    info "Waiting for llama-server to become healthy (model load: 1–3 min)..."
     HEALTHY=false
     for i in $(seq 1 36); do
         if curl -sf "http://localhost:${LLAMA_PORT}/health" &>/dev/null; then
@@ -431,11 +494,10 @@ if [ "$OPENMONO_ROLE" != "agent" ]; then
     echo ""
 
     if [ "$HEALTHY" = true ]; then
-        ok "llama-server is healthy on port ${LLAMA_PORT}"
+        ok "llama-server healthy on port ${LLAMA_PORT} (Metal GPU)"
     else
         warn "llama-server did not become healthy within 180s."
-        warn "This can be normal on systems with limited RAM (model is ~20 GB)."
-        warn "Check: openmono logs"
+        warn "Check the log: tail -f $LLAMA_LOG"
         if [ "$OPENMONO_VERBOSE" != "1" ]; then
             warn "Re-run with OPENMONO_VERBOSE=1 for detailed output."
         fi
@@ -466,11 +528,13 @@ echo ""
 case "$OPENMONO_ROLE" in
     full)
         echo "  llama-server port : ${LLAMA_PORT:-7474}"
-        echo "  mode              : CPU (Docker runs in Linux VM)"
+        echo "  mode              : Metal GPU (native llama.cpp)"
+        echo "  model             : ${MODEL_NAME:-}"
         ;;
     inference)
         echo "  llama-server port : ${LLAMA_PORT:-7474}"
-        echo "  mode              : CPU (Docker runs in Linux VM)"
+        echo "  mode              : Metal GPU (native llama.cpp)"
+        echo "  model             : ${MODEL_NAME:-}"
         ;;
     agent)
         echo "  role              : Agent only (dual-box mode)"
@@ -489,7 +553,8 @@ if [[ -n "${OPENMONO_ENV_FILE:-}" ]]; then
 export INSTALL_DIR="$INSTALL_DIR"
 export LLAMA_PORT="${LLAMA_PORT:-7474}"
 export OPENMONO_ROLE="$OPENMONO_ROLE"
-export MODEL_ACCURACY="standard"
+export MODEL_NAME="${MODEL_NAME:-}"
+export MODEL_ACCURACY="${MODEL_ACCURACY:-standard}"
 ENVEOF
     _log "Wrote install environment to: $OPENMONO_ENV_FILE"
 else
