@@ -258,29 +258,6 @@ cmd_setup() {
         rm -f "$HOME/.openmono/.tmp_gpu_mode"
     fi
 
-    # install_prereqs.sh may have just added the user to the docker group.
-    # The current shell won't see that membership until a new session starts.
-    # Re-exec the whole openmono setup under sg docker so install.sh runs
-    # with docker access — otherwise docker commands in install.sh will fail.
-    if [[ "$_OS" == "Linux" ]] && command -v docker &>/dev/null && ! docker info &>/dev/null 2>&1; then
-        if getent group docker 2>/dev/null | grep -qw "$USER"; then
-            if command -v sg &>/dev/null && sg docker -c "docker info" &>/dev/null 2>&1; then
-                info "Re-launching with docker group active..."
-                _reexec_cmd="$(printf '%q' "$0") setup"
-                for _a in "$@"; do _reexec_cmd+=" $(printf '%q' "$_a")"; done
-                exec sg docker -c "$_reexec_cmd"
-            else
-                err "User '$USER' was added to the docker group but activation failed."
-                err "Run ONE of the following to activate the docker group:"
-                err "  1. newgrp docker"
-                err "  2. exec su -l \$USER"
-                err "  3. Log out and back in"
-                err "Then resume installation with:  $REPO_DIR/openmono setup"
-                exit 1
-            fi
-        fi
-    fi
-
     bash "$_INSTALL_SCRIPT" 2>> "$OPENMONO_LOG_FILE" || {
         echo ""
         show_log_tail 30
@@ -371,12 +348,8 @@ cmd_setup() {
     esac
 
     echo "  Troubleshooting:"
-    echo "    If openmono or docker are not found, reload your shell:"
-    if [ "$_OS" = "Linux" ]; then
-        echo -e "      ${BOLD}newgrp docker${NC}     # Activate docker group (Linux only)"
-    fi
-    echo -e "      ${BOLD}source ~/.bashrc${NC}  # Reload shell config (bash)"
-    echo -e "      ${BOLD}exec \$SHELL${NC}       # Reload shell"
+    echo "    If you exit before the shell reloads, reload it manually:"
+    echo -e "      ${BOLD}exec -l \$SHELL${NC}    # Reload login shell (picks up new groups + PATH)"
     echo ""
     echo "  Full help: openmono --help"
     printf "${BLUE}%s${NC}\n" "$(printf '─%.0s' $(seq 1 60))"
@@ -417,6 +390,12 @@ cmd_setup() {
 EOF
         detail "Created $settings_file with defaults"
     fi
+
+    # Unset all setup-related environment variables so the next 'openmono setup'
+    # run in the same shell will start fresh with hardware detection
+    unset OPENMONO_GPU OPENMONO_CPU OPENMONO_ROLE OPENMONO_VERBOSE OPENMONO_LOG_DIR \
+          OPENMONO_LOG_FILE OPENMONO_ENV_FILE GPU_MODE AMD_IGPU_MODE AMD_IGPU_REBOOT_PENDING \
+          INSTALL_DIR LLAMA_PORT OPENMONO_VERBOSE
 
     # Restart the shell with updated PATH so openmono and docker are immediately available
     # The docker group is already active in this process, and exec preserves it
