@@ -1,4 +1,5 @@
 using OpenMono.History;
+using OpenMono.Rendering;
 using OpenMono.Session;
 using OpenMono.Permissions;
 using OpenMono.Config;
@@ -22,6 +23,8 @@ public sealed class ToolContext
     public Action<string>? StreamText { get; init; }
     public Action<string>? OnDebug { get; init; }
 
+    public IOutputSink? Output { get; init; }
+
     public int AgentDepth { get; init; } = 0;
 
     public ToolContext WithAgentDepth(int newDepth) => new()
@@ -39,6 +42,7 @@ public sealed class ToolContext
         EndResponse      = this.EndResponse,
         StreamText       = this.StreamText,
         OnDebug          = this.OnDebug,
+        Output           = this.Output,
         AgentDepth       = newDepth,
     };
 }

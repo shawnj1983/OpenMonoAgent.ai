@@ -754,6 +754,7 @@ public sealed class ConversationLoop : IDisposable
         EndResponse = () => _output.EndAssistantResponse(),
         StreamText = _output.StreamText,
         OnDebug = msg => { _output.WriteDebug(msg); Log.Debug(msg); },
+        Output = _output,
         AgentDepth = _agentDepth,
     };
 }
