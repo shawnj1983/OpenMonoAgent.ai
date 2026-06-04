@@ -59,14 +59,15 @@ public sealed partial class WebFetchTool : ToolBase
             (uri.Scheme != "http" && uri.Scheme != "https"))
             return ToolResult.Error($"Invalid URL: {url}");
 
-        // Prefer self-hosted Scrapling behind the gateway when configured.
-        // ScrapeEnabled == false means the service isn't installed → skip it.
-        var web = context.Config.Web;
-        if (!string.IsNullOrEmpty(web.Gateway) && web.ScrapeEnabled != false)
+        // Prefer self-hosted Scrapling behind the gateway when it offers scraping.
+        // Availability comes from the gateway's /services registry (or an explicit
+        // web.scrape override); the gateway defaults to the LLM endpoint.
+        if (await GatewayCapabilities.IsEnabledAsync(context.Config, GatewayCapabilities.WebService.Scrape, ct))
         {
+            var gateway = GatewayCapabilities.ResolveGateway(context.Config)!;
             try
             {
-                return await ScraplingFetchAsync(web.Gateway!, context.Config.Llm.ApiKey, url, maxLength, ct);
+                return await ScraplingFetchAsync(gateway, context.Config.Llm.ApiKey, url, maxLength, ct);
             }
             catch (Exception ex)
             {

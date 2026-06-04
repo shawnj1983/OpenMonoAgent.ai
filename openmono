@@ -251,9 +251,7 @@ cmd_setup_search() {
 
     ok "SearXNG installed — WebSearch now routes through the gateway"
     echo ""
-    echo "  Dual-box: after 'openmono tunnel setup', run on the AGENT box:"
-    echo -e "    ${BOLD}openmono config set web.gateway http://<relay-host>:<remotePort>${NC}"
-    echo -e "    ${BOLD}openmono config set web.search  true${NC}"
+    echo "  Dual-box: agent boxes pointed at this relay pick it up automatically."
 }
 
 cmd_setup_scraper() {
@@ -278,15 +276,19 @@ cmd_setup_scraper() {
 
     ok "Scrapling installed — WebFetch now routes through the gateway"
     echo ""
-    echo "  Dual-box: after 'openmono tunnel setup', run on the AGENT box:"
-    echo -e "    ${BOLD}openmono config set web.gateway http://<relay-host>:<remotePort>${NC}"
-    echo -e "    ${BOLD}openmono config set web.scrape  true${NC}"
+    echo "  Dual-box: agent boxes pointed at this relay pick it up automatically."
 }
 
 # Offered at the end of a fresh full/inference install. Skipped when stdin is
 # not a TTY (e.g. piped installers) — the one-liners are printed instead.
 prompt_optional_services() {
-    case "${OPENMONO_ROLE:-}" in full|inference) ;; *) return 0 ;; esac
+    # Web services (SearXNG/Scrapling) live on the inference box only. An
+    # agent-only box consumes them remotely through the relay, so never offer to
+    # install them here — it auto-detects what the inference box exposes.
+    case "${OPENMONO_ROLE:-}" in
+        full|inference) ;;
+        *) return 0 ;;
+    esac
 
     # Inference (server) box: Caddy is the single front door the frpc tunnel
     # routes through, so install it regardless of which web services are added.

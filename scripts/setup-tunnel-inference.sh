@@ -28,16 +28,9 @@ if grep -q '^GATEWAY_ENABLED=true' "$ENV_FILE" 2>/dev/null || grep -qE '^WEB_(SE
 else
     TUNNEL_LOCAL_PORT=7474
 fi
-WEB_ENABLED=false
-grep -qE '^WEB_(SEARCH|SCRAPE)_ENABLED=true' "$ENV_FILE" 2>/dev/null && WEB_ENABLED=true
-
-# Emit the agent-box web-gateway config lines (when the gateway is tunneled).
-print_web_config_lines() {
-    [[ "$WEB_ENABLED" == "true" ]] || return 0
-    echo "  openmono config set web.gateway   http://$RELAY_PUBLIC_HOST:$REMOTE_PORT"
-    grep -qE '^WEB_SEARCH_ENABLED=true' "$ENV_FILE" 2>/dev/null && echo "  openmono config set web.search    true"
-    grep -qE '^WEB_SCRAPE_ENABLED=true' "$ENV_FILE" 2>/dev/null && echo "  openmono config set web.scrape    true"
-}
+# The agent box probes the gateway's /services registry (same relay URL as
+# llm.endpoint) and routes WebSearch/WebFetch through whatever this box exposes,
+# so the agent-box instructions only ever need llm.endpoint + llm.api_key.
 
 _SETUP_OS=$(uname -s)
 _SETUP_ARCH=$(uname -m)
@@ -128,7 +121,7 @@ ${BLUE}ON THE AGENT BOX, run:${NC}
 
   openmono config set llm.endpoint  http://$RELAY_PUBLIC_HOST:$REMOTE_PORT
   openmono config set llm.api_key   $LLAMA_API_KEY
-$(print_web_config_lines)
+
 Then:  openmono agent
 
 ${YELLOW}Relay server:${NC} $FRPS_ADDRESS:$FRPS_PORT
@@ -485,7 +478,7 @@ ${BLUE}ON THE AGENT BOX, run:${NC}
 
   openmono config set llm.endpoint  http://$RELAY_PUBLIC_HOST:$REMOTE_PORT
   openmono config set llm.api_key   $LLAMA_API_KEY
-$(print_web_config_lines)
+
 Then:  openmono agent
 
 EOF

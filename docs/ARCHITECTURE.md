@@ -68,11 +68,15 @@ agent ──frpc/relay──▶  │  Caddy gateway :8080                   │
 ```
 
 - `llm.endpoint` and `web.gateway` resolve to the **same** relay base URL in
-  dual-box mode — Caddy fans them apart by path.
-- The agent reads `web.gateway` + per-service flags (`web.search`, `web.scrape`)
-  from config (env `OPENMONO_WEB_GATEWAY` / `OPENMONO_WEB_SEARCH` /
-  `OPENMONO_WEB_SCRAPE`). When a service is absent or the gateway errors, the
-  tools fall back to their built-in DuckDuckGo / direct-fetch behaviour.
+  dual-box mode — Caddy fans them apart by path. So `web.gateway` is **optional**:
+  when unset, the agent uses `llm.endpoint` as the gateway. In dual-box mode the
+  only thing to configure on the agent box is `llm.endpoint` + `llm.api_key`.
+- **The agent auto-detects services** by probing the gateway's `GET /services`
+  registry (`GatewayCapabilities`, cached per gateway for the process lifetime).
+  No need to mirror `web.search` / `web.scrape` into local config — though an
+  explicit flag (config or env `OPENMONO_WEB_SEARCH` / `OPENMONO_WEB_SCRAPE`)
+  still wins as an override. When a service is absent, the probe fails, or the
+  gateway errors, the tools fall back to built-in DuckDuckGo / direct-fetch.
 - The inference box is the source of truth for what's installed
   (`WEB_*_ENABLED` in `docker/.env`, reported on `GET /services`).
 

@@ -35,14 +35,15 @@ public sealed partial class WebSearchTool : ToolBase
         var query = input.GetProperty("query").GetString()!;
         var maxResults = input.TryGetProperty("max_results", out var mr) ? Math.Min(mr.GetInt32(), 20) : 8;
 
-        // Prefer the self-hosted SearXNG behind the gateway when configured.
-        // SearchEnabled == false means the service isn't installed → skip it.
-        var web = context.Config.Web;
-        if (!string.IsNullOrEmpty(web.Gateway) && web.SearchEnabled != false)
+        // Prefer the self-hosted SearXNG behind the gateway when it offers search.
+        // Availability comes from the gateway's /services registry (or an explicit
+        // web.search override); the gateway defaults to the LLM endpoint.
+        if (await GatewayCapabilities.IsEnabledAsync(context.Config, GatewayCapabilities.WebService.Search, ct))
         {
+            var gateway = GatewayCapabilities.ResolveGateway(context.Config)!;
             try
             {
-                return await SearxngSearchAsync(web.Gateway!, context.Config.Llm.ApiKey, query, maxResults, ct);
+                return await SearxngSearchAsync(gateway, context.Config.Llm.ApiKey, query, maxResults, ct);
             }
             catch (Exception ex)
             {
