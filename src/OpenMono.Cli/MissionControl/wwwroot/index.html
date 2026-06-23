@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mission Control · OpenMono</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◉</span>
+        <div>
+          <h1>Mission Control</h1>
+          <p class="subtitle">OpenMono agent operations</p>
+        </div>
+      </div>
+      <div class="topbar-status">
+        <span id="connection-pill" class="pill pill-muted">Connecting…</span>
+        <a id="login-btn" class="btn btn-primary btn-sm hidden" href="/auth/login">Sign in</a>
+        <button id="logout-btn" class="btn btn-ghost btn-sm hidden" type="button">Sign out</button>
+        <span id="agent-id" class="mono muted"></span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Agent</h2>
+          <button id="refresh-btn" class="btn btn-ghost btn-sm" type="button">Refresh</button>
+        </div>
+        <dl class="meta-grid" id="agent-meta">
+          <div><dt>Status</dt><dd id="agent-status">—</dd></div>
+          <div><dt>Workspace</dt><dd id="agent-workspace" class="mono truncate">—</dd></div>
+          <div><dt>Uptime</dt><dd id="agent-uptime">—</dd></div>
+          <div><dt>Version</dt><dd id="agent-version">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel panel-grow">
+        <div class="panel-head">
+          <h2>Sessions</h2>
+          <button id="new-session-btn" class="btn btn-primary btn-sm" type="button">New</button>
+        </div>
+        <ul id="session-list" class="session-list"></ul>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="empty-state" class="empty-state">
+        <p>Select a session or create one to start.</p>
+      </div>
+
+      <div id="chat-shell" class="chat-shell hidden">
+        <div class="chat-head">
+          <div>
+            <h2 id="active-session-title">Session</h2>
+            <p id="active-session-meta" class="muted"></p>
+          </div>
+          <div class="chat-head-actions">
+            <label class="toggle">
+              <input id="plan-mode-toggle" type="checkbox" />
+              <span>Plan mode</span>
+            </label>
+            <button id="abort-btn" class="btn btn-danger btn-sm" type="button">Abort</button>
+            <button id="delete-session-btn" class="btn btn-ghost btn-sm" type="button">Delete</button>
+          </div>
+        </div>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <form id="composer" class="composer">
+          <textarea
+            id="prompt-input"
+            rows="3"
+            placeholder="Message the agent…"
+            spellcheck="true"
+          ></textarea>
+          <div class="composer-actions">
+            <span id="turn-status" class="muted"></span>
+            <button id="send-btn" class="btn btn-primary" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <aside class="telemetry">
+      <section class="panel">
+        <div class="panel-head"><h2>Token usage</h2></div>
+        <dl class="meta-grid compact">
+          <div><dt>Input</dt><dd id="usage-input">—</dd></div>
+          <div><dt>Output</dt><dd id="usage-output">—</dd></div>
+          <div><dt>Total</dt><dd id="usage-total">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel panel-grow">
+        <div class="panel-head"><h2>Activity</h2></div>
+        <ul id="activity-log" class="activity-log"></ul>
+      </section>
+    </aside>
+  </div>
+
+  <dialog id="permission-dialog" class="modal">
+    <form method="dialog" class="modal-body">
+      <h3>Permission required</h3>
+      <p id="permission-tool" class="mono accent"></p>
+      <p id="permission-summary"></p>
+      <p id="permission-danger" class="danger hidden">This action is flagged as dangerous.</p>
+      <div class="modal-actions">
+        <button value="deny" class="btn btn-ghost">Deny</button>
+        <button value="allow" class="btn btn-primary">Allow</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="input-dialog" class="modal">
+    <form method="dialog" class="modal-body">
+      <h3>Agent question</h3>
+      <p id="input-question"></p>
+      <textarea id="input-answer" rows="3" placeholder="Your answer…"></textarea>
+      <div class="modal-actions">
+        <button value="cancel" class="btn btn-ghost">Cancel</button>
+        <button value="submit" class="btn btn-primary">Submit</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

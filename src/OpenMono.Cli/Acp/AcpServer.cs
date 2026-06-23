@@ -36,8 +36,31 @@ public static class AcpServer
 
         builder.Services.AddSingleton(settings);
 
+        var auth = ResolveAuthSettings(settings);
+        settings.Auth = auth;
+        if (auth.IsConfigured)
+            WorkosAuthSetup.Register(builder, auth);
+
         var app = builder.Build();
+
+        if (auth.IsConfigured)
+            WorkosAuthSetup.Use(app);
+
         AcpEndpoints.Map(app);
+        MissionControlSetup.Map(app);
         return app;
+    }
+
+    private static WorkosAuthSettings ResolveAuthSettings(AcpServerSettings settings)
+    {
+        var auth = settings.Auth ?? new WorkosAuthSettings();
+        auth.ApiKey ??= Environment.GetEnvironmentVariable("WORKOS_API_KEY");
+        auth.ClientId ??= Environment.GetEnvironmentVariable("WORKOS_CLIENT_ID");
+        auth.CookiePassword ??= Environment.GetEnvironmentVariable("WORKOS_COOKIE_PASSWORD");
+
+        if (auth.RedirectUri.Contains("{port}", StringComparison.Ordinal))
+            auth.RedirectUri = auth.RedirectUri.Replace("{port}", settings.Port.ToString(), StringComparison.Ordinal);
+
+        return auth;
     }
 }

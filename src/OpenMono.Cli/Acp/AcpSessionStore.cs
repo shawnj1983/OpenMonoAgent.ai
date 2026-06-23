@@ -66,6 +66,15 @@ public sealed class AcpSessionStore : IDisposable
         return session;
     }
 
+    public IReadOnlyList<AcpSession> ListActive()
+    {
+        var cutoff = DateTime.UtcNow - _ttl;
+        return _sessions.Values
+            .Where(s => s.LastActivityAt >= cutoff)
+            .OrderByDescending(s => s.LastActivityAt)
+            .ToList();
+    }
+
     public void Save(AcpSession session)
     {
         _sessions[session.Id] = session;

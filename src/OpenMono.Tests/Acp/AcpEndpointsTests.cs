@@ -109,6 +109,23 @@ public sealed class AcpEndpointsTests : IAsyncLifetime
         root.GetProperty("container_workspace").GetString().Should().Be("/workspace");
         root.GetProperty("status").GetString().Should().Be("ready");
         root.GetProperty("uptime_seconds").GetInt32().Should().BeGreaterThanOrEqualTo(0);
+        root.GetProperty("mission_control").GetString().Should().Be("/");
+    }
+
+    [Fact]
+    public async Task ListSessions_returns_active_sessions()
+    {
+        var sid = await CreateSessionAsync();
+
+        var res = await _client.GetAsync("/api/v1/sessions");
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        var sessions = doc.RootElement.GetProperty("sessions").EnumerateArray().ToArray();
+        sessions.Should().ContainSingle();
+        sessions[0].GetProperty("session_id").GetString().Should().Be(sid);
+        sessions[0].GetProperty("message_count").GetInt32().Should().Be(0);
+        sessions[0].GetProperty("busy").GetBoolean().Should().BeFalse();
     }
 
 
