@@ -28,6 +28,11 @@ public sealed class AcpServerSettings
     public string SessionsDirectory { get; set; } = "/data/acp-sessions";
 
     public TimeSpan PendingUserResponseTimeout => TimeSpan.FromMinutes(PendingUserResponseTimeoutMinutes);
+
+    /// <summary>
+    /// Optional WorkOS AuthKit protection for Mission Control and /api/v1 routes.
+    /// </summary>
+    public WorkosAuthSettings? Auth { get; set; }
 }
 
 

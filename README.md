@@ -249,6 +249,7 @@ behaviour.
 - [Roadmap](ROADMAP.md)
 - [Setup & commands](docs/SETUP.md) — daily commands, TUI vs classic, flags
 - **VS Code / Cursor** — chat UI over the ACP server. Start the agent in your project folder with `--acp-only --acp-port 7475` (Windows: run `./install.ps1 -Run` from this folder), then open the [OpenMono Agent](https://marketplace.visualstudio.com/publishers/StartupHakk) panel.
+- **Mission Control** — web dashboard at `http://127.0.0.1:7475/` when the ACP server is enabled (`OPENMONO_ACP_ENABLED=1` or `--acp-only`). Monitor agent status, manage sessions, chat with streaming, and approve permissions from the browser.
 - [Architecture](docs/ARCHITECTURE.md) — .NET CLI + llama.cpp + Docker, full diagram
 - [Models & reasoning mode](docs/MODELS.md)
 - [Configuration](docs/CONFIG.md) — settings.json, providers, permissions, MCP servers

@@ -18,6 +18,7 @@ public static class AcpEndpoints
     public static void Map(WebApplication app)
     {
         app.MapGet("/api/v1/discovery", GetDiscovery);
+        app.MapGet("/api/v1/sessions", ListSessions);
         app.MapPost("/api/v1/sessions", PostSession);
         app.MapGet("/api/v1/sessions/{id}", GetSession);
         app.MapGet("/api/v1/sessions/{id}/messages", GetMessages);
@@ -27,9 +28,10 @@ public static class AcpEndpoints
 
 
 
-    private static IResult GetDiscovery(AcpLockFileWriter lockfile)
+    private static IResult GetDiscovery(AcpLockFileWriter lockfile, AcpServerSettings settings)
     {
         var uptime = (int)(DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalSeconds;
+        var auth = settings.Auth ?? new WorkosAuthSettings();
         return Results.Ok(new
         {
             version = "1.0.0",
@@ -38,8 +40,33 @@ public static class AcpEndpoints
             container_workspace = lockfile.ContainerWorkspace,
             status = "ready",
             uptime_seconds = uptime,
+            mission_control = "/",
+            auth = new
+            {
+                enabled = auth.IsConfigured,
+                login_url = auth.IsConfigured ? "/auth/login" : null,
+            },
         });
     }
+
+    private static IResult ListSessions(AcpSessionStore store)
+    {
+        var sessions = store.ListActive().Select(ProjectSessionSummary).ToList();
+        return Results.Ok(new { sessions });
+    }
+
+    private static object ProjectSessionSummary(AcpSession session) => new
+    {
+        session_id = session.Id,
+        model = session.Model,
+        started_at = session.StartedAt.ToString("o"),
+        last_activity_at = session.LastActivityAt.ToString("o"),
+        turn_count = session.TurnCount,
+        plan_mode = session.PlanMode,
+        message_count = session.Messages.Count,
+        pending_count = session.PendingIds.Count,
+        busy = session.TurnLock.CurrentCount == 0,
+    };
 
 
 
