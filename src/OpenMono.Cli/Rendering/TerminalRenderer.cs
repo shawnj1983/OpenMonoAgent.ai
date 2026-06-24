@@ -226,7 +226,10 @@ public sealed class TerminalRenderer : IRenderer
             {
                 var genTime = m.TotalElapsed - m.TimeToFirstToken;
                 var evalTps = m.TimeToFirstToken.TotalSeconds > 0.001 ? m.PromptTokens / m.TimeToFirstToken.TotalSeconds : 0;
-                var genTps  = genTime.TotalSeconds > 0.001 ? m.CompletionTokens / genTime.TotalSeconds : 0;
+                // Prefer llama.cpp's server-reported decode rate; fall back to wall-clock if absent.
+                var genTps  = m.GenTokensPerSecond > 0
+                    ? m.GenTokensPerSecond
+                    : (genTime.TotalSeconds > 0.001 ? m.CompletionTokens / genTime.TotalSeconds : 0);
                 var line = $"[dim]TTFT [/]{m.TimeToFirstToken.TotalSeconds:F1}s";
                 if (evalTps > 0) line += $"[dim] · eval [/]{evalTps:F0}/s";
                 if (genTps  > 0) line += $"[dim] · gen [/]{genTps:F0}/s";

@@ -303,7 +303,6 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
             await acpHost.StartAsync(acpCts.Token);
             renderer.WriteInfo($"ACP server listening on http://127.0.0.1:{acp.Port}");
             renderer.WriteInfo($"Lock file: {lockFileWriter.LockFilePath}");
-            Console.WriteLine($"[OMA_INIT] ACP server started. System prompt loaded: {SystemPrompt.Base.Length} characters");
         }
         catch (Exception ex)
         {

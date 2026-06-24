@@ -49,12 +49,6 @@ public sealed class AcpTurnRunner : IAcpEventSink
         {
             var promptLength = SystemPrompt.Base.Length;
             var promptPreview = SystemPrompt.Base.Substring(0, Math.Min(80, SystemPrompt.Base.Length)).Replace("\n", " ");
-            Console.WriteLine($"[OMA_INIT] ACP session {session.Id} initialized. System prompt available: {promptLength} chars.");
-            Console.Out.Flush();
-            Console.WriteLine($"[OMA_DEBUG] Log.LogPath = {Log.LogPath}");
-            Console.Out.Flush();
-            Console.WriteLine($"[OMA_DEBUG] Log initialized: {(Log.LogPath != null ? "YES" : "NO")}");
-            Console.Out.Flush();
             Log.Info($"[OMA_INIT] ACP session {session.Id} initialized. System prompt available: {promptLength} chars. Preview: {promptPreview}...");
         }
     }
@@ -63,28 +57,19 @@ public sealed class AcpTurnRunner : IAcpEventSink
 
     public async Task RunUserMessageAsync(string userText, CancellationToken ct)
     {
-        Console.WriteLine($"[OMA_DISPATCH] RunUserMessageAsync called. Current messages: {_acpSession.Messages.Count}");
-        Console.Out.Flush();
-
         // Ensure system prompt is set on first message
         if (_acpSession.Messages.Count == 0 || _acpSession.Messages[0].Role != MessageRole.System)
         {
-            Console.WriteLine($"[OMA_SYSTEMPROMPT] Adding system prompt ({SystemPrompt.Base.Length} chars). Messages before: {_acpSession.Messages.Count}");
-            Console.Out.Flush();
             Log.Info($"[OMA_SYSTEMPROMPT] Session {_acpSession.Id}: Adding system prompt ({SystemPrompt.Base.Length} chars). Messages before: {_acpSession.Messages.Count}");
             _acpSession.Messages.Insert(0, new Message
             {
                 Role = MessageRole.System,
                 Content = SystemPrompt.Base
             });
-            Console.WriteLine($"[OMA_SYSTEMPROMPT] System prompt added. Messages now: {_acpSession.Messages.Count}. First is System: {_acpSession.Messages[0].Role == MessageRole.System}");
-            Console.Out.Flush();
             Log.Info($"[OMA_SYSTEMPROMPT] System prompt added. Messages after: {_acpSession.Messages.Count}. First message is System: {_acpSession.Messages[0].Role == MessageRole.System}");
         }
         else
         {
-            Console.WriteLine($"[OMA_SYSTEMPROMPT] System prompt already present. Messages: {_acpSession.Messages.Count}");
-            Console.Out.Flush();
             Log.Info($"[OMA_SYSTEMPROMPT] System prompt already present in message history, not adding again");
         }
 
@@ -93,8 +78,6 @@ public sealed class AcpTurnRunner : IAcpEventSink
 
         _acpSession.Messages.Add(new Message { Role = MessageRole.User, Content = transformedText });
         _acpSession.TurnCount++;
-        Console.WriteLine($"[OMA_TURN] turn {_acpSession.TurnCount}: {_acpSession.Messages.Count} total messages. First is System: {_acpSession.Messages[0].Role == MessageRole.System}");
-        Console.Out.Flush();
         Log.Info($"[OMA_TURN] Session {_acpSession.Id} turn {_acpSession.TurnCount}: Processing message with {_acpSession.Messages.Count} total messages (first is System: {_acpSession.Messages[0].Role == MessageRole.System})");
         await DriveLoopAsync(ct);
     }
@@ -349,8 +332,16 @@ public sealed class AcpTurnRunner : IAcpEventSink
     public Task OnThinkingDeltaAsync(string content)
         => _writer.WriteEventAsync("thinking_delta", new { content });
 
-    public Task OnToolStartAsync(string callId, string name, string summary)
-        => _writer.WriteEventAsync("tool_start", new { id = callId, name, summary });
+    public Task OnToolStartAsync(string callId, string name, string summary, string? arguments = null)
+    {
+        var payload = new { id = callId, name, summary, arguments };
+        if (!string.IsNullOrEmpty(arguments))
+            Log.Debug($"[ACP] OnToolStartAsync: {name} with arguments ({arguments.Length} bytes)");
+        return _writer.WriteEventAsync("tool_start", payload);
+    }
+
+    public Task OnToolStatusAsync(string callId, string status)
+        => _writer.WriteEventAsync("tool_status", new { id = callId, status });
 
     public Task OnToolEndAsync(string callId, string name, bool ok, double durationMs)
         => _writer.WriteEventAsync("tool_end", new { id = callId, name, ok, duration_ms = durationMs });
@@ -381,12 +372,16 @@ public sealed class AcpTurnRunner : IAcpEventSink
             checkpoint_index = checkpointIndex,
         });
 
-    public Task OnUsageAsync(int inputTokens, int outputTokens, int totalTokens)
+    public Task OnUsageAsync(int inputTokens, int outputTokens, int totalTokens, int contextTokens, int contextWindow, double genTps, double avgTps)
         => _writer.WriteEventAsync("usage", new
         {
             input_tokens = inputTokens,
             output_tokens = outputTokens,
             total_tokens = totalTokens,
+            context_tokens = contextTokens,
+            context_window = contextWindow,
+            gen_tps = genTps,
+            avg_tps = avgTps,
         });
 
     public Task OnSubAgentLogAsync(string line)
