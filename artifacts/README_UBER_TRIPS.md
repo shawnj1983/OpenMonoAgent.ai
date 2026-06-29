@@ -1,11 +1,21 @@
 # Uber Trips Organization — Feb 23, 2026 → present
 
-Organized spreadsheet + proof artifacts for reimbursement, insurance claim, or records.
+**Primary deliverable for your lawyer: `Uber_Trips_Lawyer_Report_Feb23_Jun2026.pdf`**
 
-## Deliverable
+This single PDF contains:
+- Professional cover page with claimant details, claim #35538410, policy, period, and grand totals (152 trips / 559.45 km / $1,565.21 CAD / 39 with proofs)
+- Monthly expense summary
+- Full detailed trip log table for all 152 trips (date, km, cost, pickup → destination, proof reference)
+- Detailed extracts + full text from every available receipt proof (PDF invoices, HTML downloads, the June 7 Outlook .eml, and the Feb 23 receipt image you provided)
+- Complete source file inventory and compilation notes
+- Explicit disclaimer and note about live Uber app (remote agent had access only to the files you uploaded)
+
+The PDF is formatted for printing and legal review. Original receipt files are in the same folder for attachment if needed.
+
+## Companion Spreadsheet
 **`Uber_Trips_Organized_Feb23_Jun2026.xlsx`** (also in /artifacts of repo)
 
-Contains 4 sheets:
+Contains 4 sheets (source of the PDF tables):
 1. **Trip Log** — Every trip with:
    - Date
    - Distance (km)
