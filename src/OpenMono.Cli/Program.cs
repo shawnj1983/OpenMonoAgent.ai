@@ -212,6 +212,7 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     tools.Register(new BashTool());
     tools.Register(new CaptainFileOpsTool());
     tools.Register(new CaptainSearchTool());
+    tools.Register(new BrowserControlTool());
     tools.Register(new AgentTool());
     tools.Register(new TodoTool());
     tools.Register(new AskUserTool());

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Diagnostics;
+using System.Net;
+using Microsoft.Playwright;
 using OpenMono.Config;
 using OpenMono.Mcp;
 using OpenMono.Rendering;
@@ -42,6 +44,8 @@ public static class CaptainCli
                 return await QueryAsync(rest, config, renderer);
             case "mcp-smoke":
                 return await McpSmokeAsync(config, renderer, ct);
+            case "browser-smoke":
+                return await BrowserSmokeAsync(config, renderer, ct);
             default:
                 renderer.WriteError($"Unknown captain subcommand: {sub}");
                 PrintHelp(renderer);
@@ -65,6 +69,7 @@ public static class CaptainCli
               `openmono captain scan`        Scan roots and build/update the local index
               `openmono captain query <q>`   Search the index (paths + snippets)
               `openmono captain mcp-smoke`   Smoke test Outlook + browser MCP connectivity (for demos)
+              `openmono captain browser-smoke`  Smoke test full browser control (Playwright)
 
             Safety defaults:
             - Moves/renames allowed.
@@ -409,6 +414,107 @@ public static class CaptainCli
 
         renderer.WriteInfo("MCP smoke: OK");
         return 0;
+    }
+
+    private static async Task<int> BrowserSmokeAsync(AppConfig config, IRenderer renderer, CancellationToken ct)
+    {
+        // Best-effort smoke: start system Chrome headless with a remote debugging port, connect via CDP,
+        // then navigate to example.com and save screenshot + PDF into cwd.
+        // This validates "full browser control" without requiring Playwright browser downloads.
+        var outDir = Path.Combine(config.WorkingDirectory, ".captain_captures");
+        Directory.CreateDirectory(outDir);
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+        var screenshot = Path.Combine(outDir, $"{stamp}_browser_smoke.png");
+        var pdf = Path.Combine(outDir, $"{stamp}_browser_smoke.pdf");
+
+        var port = 9223;
+        var cdpUrl = $"http://127.0.0.1:{port}";
+        var profileDir = Path.Combine(Path.GetTempPath(), $"openmono-browser-smoke-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(profileDir);
+            var chromePath = Environment.GetEnvironmentVariable("OPENMONO_CHROME_PATH")
+                ?? (File.Exists("/usr/local/bin/google-chrome") ? "/usr/local/bin/google-chrome" : "/usr/local/bin/chrome");
+
+            var chromeArgs = string.Join(' ', new[]
+            {
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                $"--remote-debugging-port={port}",
+                $"--user-data-dir=\"{profileDir}\"",
+                "about:blank"
+            });
+
+            using var chrome = Process.Start(new ProcessStartInfo
+            {
+                FileName = chromePath,
+                Arguments = chromeArgs,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            });
+
+            if (chrome is null)
+                throw new InvalidOperationException("Failed to start system Chrome.");
+
+            // Wait until CDP is ready.
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var ready = false;
+            for (var i = 0; i < 25; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var resp = await http.GetAsync($"{cdpUrl}/json/version", ct);
+                    if (resp.StatusCode == HttpStatusCode.OK) { ready = true; break; }
+                }
+                catch { }
+                await Task.Delay(200, ct);
+            }
+
+            if (!ready)
+                throw new InvalidOperationException($"Chrome CDP endpoint not ready at {cdpUrl}.");
+
+            using var pw = await Playwright.CreateAsync();
+            await using var browser = await pw.Chromium.ConnectOverCDPAsync(cdpUrl);
+            var context = browser.Contexts.FirstOrDefault() ?? await browser.NewContextAsync();
+            var page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
+
+            await page.GotoAsync("https://example.com", new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+            await page.ScreenshotAsync(new PageScreenshotOptions { Path = screenshot, FullPage = true });
+            await page.PdfAsync(new PagePdfOptions { Path = pdf, PrintBackground = true });
+
+            renderer.WriteInfo($"Browser smoke screenshot: {screenshot}");
+            renderer.WriteInfo($"Browser smoke PDF: {pdf}");
+
+            try
+            {
+                if (!chrome.HasExited)
+                {
+                    chrome.Kill(entireProcessTree: true);
+                    chrome.WaitForExit(2000);
+                }
+            }
+            catch { }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            renderer.WriteError("Browser smoke failed. If this is your first run, install Playwright browsers:");
+            renderer.WriteMarkdown("`pwsh src/OpenMono.Cli/bin/Release/net10.0/playwright.ps1 install chromium`");
+            renderer.WriteError(ex.Message);
+            return 1;
+        }
+        finally
+        {
+            try { Directory.Delete(profileDir, recursive: true); } catch { }
+        }
     }
 
     private static McpServerConfig ToMcpConfig(string name, McpServerSettings settings) => new()

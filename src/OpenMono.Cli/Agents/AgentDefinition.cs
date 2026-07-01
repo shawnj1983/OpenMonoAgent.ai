@@ -240,7 +240,7 @@ public static class BuiltInAgents
     {
         Name = "Navigator",
         Description = "Browser capture specialist — extracts current tab content via MCP and saves markdown for indexing",
-        AllowedTools = ["mcp__chrome-devtools__*", "FileWrite", "Bash", "AskUser", "TodoWrite"],
+        AllowedTools = ["BrowserControl", "mcp__chrome-devtools__*", "FileWrite", "Bash", "AskUser", "TodoWrite"],
         MaxTurns = 200,
         SystemPrompt = """
             You are Navigator, the browser specialist.

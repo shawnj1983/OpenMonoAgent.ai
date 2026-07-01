@@ -710,6 +710,39 @@ google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-mcp
 
 This triggers a capture workflow that saves markdown into `.captain_captures/` and indexes it for `openmono captain query`.
 
+---
+
+## Full browser control (agent-mode automation)
+
+If you want OpenMono to **click, type, navigate, and print-to-PDF** like a “computer-use” agent, use the built-in `BrowserControl` tool (Playwright-backed).
+
+What it can do:
+- Connect to your existing Chrome/Edge via remote debugging (CDP)
+- Navigate, click, type, press keys, wait for selectors
+- Extract readable text for indexing
+- Save screenshots and print pages to PDF (inside your working directory)
+
+Safety:
+- Always permission-gated
+- Refuses “submit/pay/checkout” clicks unless you explicitly set `allow_submit=true`
+
+To enable control of your *real* browser session:
+1) Start Chrome/Edge with remote debugging:
+   - Windows: `chrome.exe --remote-debugging-port=9222`
+   - macOS: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222`
+   - Linux: `google-chrome --remote-debugging-port=9222`
+2) In OpenMono, use `BrowserControl`:
+   - `connect_cdp` with `cdp_url=http://localhost:9222`
+   - `list_pages` → `select_page`
+   - `navigate` / `click` / `type` / `pdf`
+
+Playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/navigator_browser_control
+cp setup/playbooks/navigator_browser_control/PLAYBOOK.md ~/.openmono/playbooks/navigator_browser_control/PLAYBOOK.md
+```
+
 Navigator playbook template:
 
 ```bash
