@@ -101,6 +101,16 @@ public sealed class CaptainIndexer
             ? TryOpenSearchFirst(query, limit)
             : _store.Search(query, limit);
 
+    public void RemoveFile(string path)
+    {
+        var resolved = Path.GetFullPath(path, _config.WorkingDirectory);
+        if (CaptainPathPolicy.ValidatePath(resolved, _rules.Roots) is { } err)
+            throw new InvalidOperationException(err);
+
+        _store.RemoveFile(resolved);
+        // OpenSearch delete is best-effort and optional; keep local consistent.
+    }
+
     private IReadOnlyList<CaptainSearchHit> TryOpenSearchFirst(string query, int limit)
     {
         try

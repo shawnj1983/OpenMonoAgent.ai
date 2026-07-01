@@ -103,6 +103,30 @@ public sealed class CaptainLocalIndexStore
         tx.Commit();
     }
 
+    public void RemoveFile(string path)
+    {
+        using var conn = Open();
+        using var tx = conn.BeginTransaction();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM files WHERE path = $path;";
+            cmd.Parameters.AddWithValue("$path", path);
+            cmd.ExecuteNonQuery();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM files_fts WHERE path = $path;";
+            cmd.Parameters.AddWithValue("$path", path);
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
     public (long size, string mtimeUtc)? TryGetFileState(string path)
     {
         using var conn = Open();

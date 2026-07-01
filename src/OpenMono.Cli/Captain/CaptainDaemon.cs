@@ -19,37 +19,56 @@ public static class CaptainDaemon
 
         var ops = new CaptainFileOps(config, rules);
         var indexer = new CaptainIndexer(config, rules);
-        var lastSweep = DateTime.MinValue;
+        var queue = new CaptainEventQueue(config);
+        using var watcher = new FileWatchService(queue, rules, renderer);
+        watcher.Start();
 
         while (!ct.IsCancellationRequested)
         {
-            if (rules.Organization.Enabled &&
-                rules.Organization.InboxRoot is { Length: > 0 } inbox &&
-                rules.Organization.OrganizedRoot is { Length: > 0 } organized &&
-                (DateTime.UtcNow - lastSweep).TotalSeconds >= 2)
+            var batch = queue.DequeueBatch(maxItems: 50);
+            if (batch.Count > 0)
             {
-                lastSweep = DateTime.UtcNow;
-                try
+                foreach (var ev in batch)
                 {
-                    OrganizeInboxOnce(inbox, organized, ops, indexer);
-                }
-                catch (Exception ex)
-                {
-                    renderer.WriteWarning($"Captain sweep failed: {ex.Message}");
+                    if (ct.IsCancellationRequested) break;
+                    try
+                    {
+                        HandleEvent(ev, rules, ops, indexer);
+                    }
+                    catch (Exception ex)
+                    {
+                        renderer.WriteWarning($"Event failed ({ev.Type}): {ex.Message}");
+                    }
                 }
             }
-            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+
+            await Task.Delay(batch.Count > 0 ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromMilliseconds(250), ct);
         }
     }
 
-    private static void OrganizeInboxOnce(string inbox, string organizedRoot, CaptainFileOps ops, CaptainIndexer indexer)
+    private static void HandleEvent(CaptainEvent ev, CaptainRules rules, CaptainFileOps ops, CaptainIndexer indexer)
     {
-        if (!Directory.Exists(inbox)) return;
+        // Ignore directory events; we index files only.
+        if (Directory.Exists(ev.Path))
+            return;
 
-        foreach (var path in Directory.GetFiles(inbox))
+        if (ev.Type is "fs_deleted")
+        {
+            indexer.RemoveFile(ev.Path);
+            return;
+        }
+
+        var path = ev.Path;
+        if (!File.Exists(path))
+            return;
+
+        if (rules.Organization.Enabled &&
+            rules.Organization.InboxRoot is { Length: > 0 } inbox &&
+            rules.Organization.OrganizedRoot is { Length: > 0 } organizedRoot &&
+            IsUnder(path, inbox))
         {
             var fileName = Path.GetFileName(path);
-            if (string.IsNullOrWhiteSpace(fileName)) continue;
+            if (string.IsNullOrWhiteSpace(fileName)) return;
 
             var ext = Path.GetExtension(fileName).TrimStart('.').ToLowerInvariant();
             var bucket = BucketForExtension(ext);
@@ -61,7 +80,11 @@ public static class CaptainDaemon
             var dest = Path.Combine(destDir, newName);
             ops.Move(path, dest);
             indexer.IndexFile(dest);
+            return;
         }
+
+        // Outside inbox: keep in place, but index (incremental).
+        indexer.IndexFile(path);
     }
 
     private static string BucketForExtension(string ext) => ext switch
@@ -80,6 +103,13 @@ public static class CaptainDaemon
         while (cleaned.Contains("__", StringComparison.Ordinal))
             cleaned = cleaned.Replace("__", "_", StringComparison.Ordinal);
         return cleaned.Trim('_').ToLowerInvariant();
+    }
+
+    private static bool IsUnder(string path, string root)
+    {
+        var normRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var normPath = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return normPath.StartsWith(normRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
 }
 

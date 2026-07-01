@@ -19,6 +19,9 @@ public static class CaptainPaths
     public static string QueuePath(AppConfig config) =>
         Path.Combine(CaptainDir(config), "queue.jsonl");
 
+    public static string QueueCursorPath(AppConfig config) =>
+        Path.Combine(CaptainDir(config), "queue.cursor");
+
     public static string PidPath(AppConfig config) =>
         Path.Combine(CaptainDir(config), "captain.pid");
 
