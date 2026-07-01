@@ -7,11 +7,20 @@ namespace OpenMono.Tests.Config;
 public class ConfigLoaderTests : IDisposable
 {
     private readonly string _tempDir;
+    private readonly string _baselineDataDir;
+    private readonly string? _priorDataDir;
 
     public ConfigLoaderTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"openmono-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
+
+        // Isolate tests from any real user ~/.openmono settings on the machine.
+        _baselineDataDir = Path.Combine(_tempDir, "user-data");
+        Directory.CreateDirectory(_baselineDataDir);
+
+        _priorDataDir = Environment.GetEnvironmentVariable("OPENMONO_DATA_DIR");
+        Environment.SetEnvironmentVariable("OPENMONO_DATA_DIR", _baselineDataDir);
     }
 
     [Fact]
@@ -66,7 +75,7 @@ public class ConfigLoaderTests : IDisposable
         }
         finally
         {
-            Environment.SetEnvironmentVariable("OPENMONO_DATA_DIR", null);
+            Environment.SetEnvironmentVariable("OPENMONO_DATA_DIR", _baselineDataDir);
         }
     }
 
@@ -163,6 +172,7 @@ public class ConfigLoaderTests : IDisposable
 
     public void Dispose()
     {
+        Environment.SetEnvironmentVariable("OPENMONO_DATA_DIR", _priorDataDir);
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
     }

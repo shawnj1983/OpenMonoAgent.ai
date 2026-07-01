@@ -23,6 +23,12 @@ public static class ConfigLoader
             RepetitionPenalty = 1.0,
         };
 
+        // DataDirectory is needed before we can read the user settings file.
+        // Apply this env override early; all other env overrides still apply later.
+        var dataDir = Environment.GetEnvironmentVariable("OPENMONO_DATA_DIR");
+        if (!string.IsNullOrEmpty(dataDir))
+            config.DataDirectory = dataDir;
+
         var userConfigPath = Path.Combine(config.DataDirectory, "settings.json");
         MergeFromFile(config, userConfigPath, warn);
 

@@ -34,6 +34,10 @@ public static class CaptainCli
                 return await StatusAsync(config, renderer);
             case "undo":
                 return await UndoAsync(config, renderer);
+            case "scan":
+                return await ScanAsync(config, renderer, ct);
+            case "query":
+                return await QueryAsync(rest, config, renderer);
             default:
                 renderer.WriteError($"Unknown captain subcommand: {sub}");
                 PrintHelp(renderer);
@@ -54,6 +58,8 @@ public static class CaptainCli
               `openmono captain status`      Show current state (pid, paths)
               `openmono captain stop`        Stop background captain (pid file)
               `openmono captain undo`        Undo the last successful move/rename
+              `openmono captain scan`        Scan roots and build/update the local index
+              `openmono captain query <q>`   Search the index (paths + snippets)
 
             Safety defaults:
             - Moves/renames allowed.
@@ -242,6 +248,46 @@ public static class CaptainCli
             renderer.WriteError(ex.Message);
             return Task.FromResult(1);
         }
+    }
+
+    private static Task<int> ScanAsync(AppConfig config, IRenderer renderer, CancellationToken ct)
+    {
+        var rules = CaptainRulesStore.LoadOrDefault(config);
+        var indexer = new CaptainIndexer(config, rules);
+        renderer.WriteInfo("Scanning roots…");
+        var count = indexer.ScanAll(renderer, ct);
+        renderer.WriteInfo($"Indexed {count} files.");
+        return Task.FromResult(0);
+    }
+
+    private static Task<int> QueryAsync(string[] args, AppConfig config, IRenderer renderer)
+    {
+        if (args.Length == 0)
+        {
+            renderer.WriteError("Usage: openmono captain query <query>");
+            return Task.FromResult(1);
+        }
+
+        var q = string.Join(' ', args);
+        var rules = CaptainRulesStore.LoadOrDefault(config);
+        var indexer = new CaptainIndexer(config, rules);
+        var hits = indexer.Search(q, limit: 20);
+
+        if (hits.Count == 0)
+        {
+            renderer.WriteInfo("No matches.");
+            return Task.FromResult(0);
+        }
+
+        renderer.WriteInfo($"Matches: {hits.Count}");
+        foreach (var h in hits)
+        {
+            renderer.WriteInfo($"{h.Path}  ({h.Size} bytes, mtime {h.MtimeUtc})");
+            if (!string.IsNullOrWhiteSpace(h.Snippet))
+                renderer.WriteInfo($"  {h.Snippet}");
+        }
+
+        return Task.FromResult(0);
     }
 
     private static bool ProcessExists(int pid)

@@ -18,6 +18,7 @@ public static class CaptainDaemon
         renderer.WriteInfo($"Captain organized root: {rules.Organization.OrganizedRoot ?? "(none)"}");
 
         var ops = new CaptainFileOps(config, rules);
+        var indexer = new CaptainIndexer(config, rules);
         var lastSweep = DateTime.MinValue;
 
         while (!ct.IsCancellationRequested)
@@ -30,7 +31,7 @@ public static class CaptainDaemon
                 lastSweep = DateTime.UtcNow;
                 try
                 {
-                    OrganizeInboxOnce(inbox, organized, ops);
+                    OrganizeInboxOnce(inbox, organized, ops, indexer);
                 }
                 catch (Exception ex)
                 {
@@ -41,7 +42,7 @@ public static class CaptainDaemon
         }
     }
 
-    private static void OrganizeInboxOnce(string inbox, string organizedRoot, CaptainFileOps ops)
+    private static void OrganizeInboxOnce(string inbox, string organizedRoot, CaptainFileOps ops, CaptainIndexer indexer)
     {
         if (!Directory.Exists(inbox)) return;
 
@@ -59,6 +60,7 @@ public static class CaptainDaemon
             var destDir = Path.Combine(organizedRoot, bucket);
             var dest = Path.Combine(destDir, newName);
             ops.Move(path, dest);
+            indexer.IndexFile(dest);
         }
     }
 
