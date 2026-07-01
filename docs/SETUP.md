@@ -533,6 +533,7 @@ Or set `OPENMONO_VISION_ENABLED=0` to prevent the CLI from sending images withou
 | `/clear` | Clear context and start fresh |
 | `/debug` | Toggle verbose debug output |
 | `/retry` | Resend the last message |
+| `/capture [note]` | Capture current browser tab via MCP into `.captain_captures/` and index it |
 | `/quit` | Exit OpenMono |
 
 ---
@@ -668,6 +669,48 @@ Playbook template:
 ```bash
 mkdir -p ~/.openmono/playbooks/postmaster_outlook
 cp setup/playbooks/postmaster_outlook/PLAYBOOK.md ~/.openmono/playbooks/postmaster_outlook/PLAYBOOK.md
+```
+
+---
+
+## Browser capture via MCP (Navigator)
+
+Recommended cross-platform connector: `chrome-devtools-mcp` (Chrome DevTools Protocol exposed as MCP tools).
+
+1) Start Chrome/Chromium with remote debugging enabled:
+
+```bash
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-mcp
+```
+
+2) Add an MCP server named `chrome-devtools`:
+
+```jsonc
+{
+  "mcp_servers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"],
+      "env": { "CHROME_DEBUGGING_PORT": "9222" },
+      "enabled": true
+    }
+  }
+}
+```
+
+3) In OpenMono, use:
+
+```text
+/capture
+```
+
+This triggers a capture workflow that saves markdown into `.captain_captures/` and indexes it for `openmono captain query`.
+
+Navigator playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/navigator_browser_capture
+cp setup/playbooks/navigator_browser_capture/PLAYBOOK.md ~/.openmono/playbooks/navigator_browser_capture/PLAYBOOK.md
 ```
 
 ---

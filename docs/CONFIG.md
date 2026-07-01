@@ -171,6 +171,14 @@ By default these write to the project-level `.openmono/settings.json`. Pass `--g
         "MS365_MCP_TENANT_ID": "consumers"
       },
       "enabled": true
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"],
+      "env": {
+        "CHROME_DEBUGGING_PORT": "9222"
+      },
+      "enabled": true
     }
   },
   "model_presets": {

@@ -113,6 +113,7 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine("  /checkpoint        Checkpoint conversation to free context");
             Console.WriteLine("  /think             Toggle step-by-step reasoning mode");
             Console.WriteLine("  /genius            Toggle genius mode (deep autopsy, thick 10x, kill critic)");
+            Console.WriteLine("  /capture           Capture current browser tab via MCP into markdown for Captain");
             Console.WriteLine("  /init              Auto-generate OPENMONO.md from project");
             Console.WriteLine("  /resume [id]       Restore a previous session");
             Console.WriteLine("  /export            Export conversation (markdown/json/html)");
@@ -448,6 +449,7 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     commands.Register(new RetryCommand(loop));
     commands.Register(new CompactCommand(compactor));
     commands.Register(new ModelCommand());
+    commands.Register(new CaptureCommand(loop));
 
     renderer.EnableCommandSuggestions(commands);
 
