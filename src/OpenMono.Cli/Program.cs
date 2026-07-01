@@ -262,6 +262,34 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
         renderer.WriteInfo("OpenSearch (opensearch-skills) detected — registered 'opensearch' MCP server for agent tools/memory/search.");
     }
 
+    // Outlook / Microsoft 365 (Graph) integration: auto-register a ms365 MCP server if env is present.
+    if (!config.McpServers.ContainsKey("ms365"))
+    {
+        var clientId = Environment.GetEnvironmentVariable("MS365_MCP_CLIENT_ID");
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            var msEnv = new Dictionary<string, string>
+            {
+                ["MS365_MCP_CLIENT_ID"] = clientId!,
+                ["MS365_MCP_TENANT_ID"] = Environment.GetEnvironmentVariable("MS365_MCP_TENANT_ID") ?? "consumers",
+            };
+
+            var secret = Environment.GetEnvironmentVariable("MS365_MCP_CLIENT_SECRET");
+            if (!string.IsNullOrWhiteSpace(secret))
+                msEnv["MS365_MCP_CLIENT_SECRET"] = secret!;
+
+            config.McpServers["ms365"] = new McpServerSettings
+            {
+                Command = "npx",
+                Args = new[] { "-y", "@softeria/ms-365-mcp-server", "--preset", "mail" },
+                Env = msEnv,
+                Enabled = true,
+            };
+
+            renderer.WriteInfo("MS365 (Outlook) detected — registered 'ms365' MCP server (Microsoft Graph mail preset).");
+        }
+    }
+
     using var mcpManager = new McpServerManager(msg => renderer.WriteInfo(msg));
     var mcpConfigs = config.McpServers.Select(kv => new McpServerConfig
     {

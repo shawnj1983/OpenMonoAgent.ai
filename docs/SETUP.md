@@ -602,6 +602,76 @@ See opensearch-project/opensearch-mcp-server-py and the attached skill for full 
 
 ---
 
+## Captain (always-on “information ship”)
+
+Captain is OpenMono’s local-first ingestion + organization engine:
+
+- Watches configured roots for changes (FileSystemWatcher)
+- Builds a persistent local index (SQLite + FTS) for fast Q&A with citations
+- Safely auto-organizes **inbox folders** with **move + rename only** (no deletes)
+- Records every move/rename in an append-only journal and supports undo
+
+Quickstart:
+
+```bash
+openmono captain init
+# edit ~/.openmono/captain/rules.yml (roots + inboxRoot + organizedRoot)
+openmono captain start
+
+openmono captain query invoice
+openmono captain undo
+openmono captain stop
+```
+
+If you want a one-off rebuild of the local index:
+
+```bash
+openmono captain scan
+```
+
+---
+
+## Outlook / Microsoft 365 (Graph) via MCP (Postmaster)
+
+To give OpenMono (and Captain’s Postmaster playbooks) Outlook access, run an OSS MCP server for Microsoft Graph.
+
+Recommended: `@softeria/ms-365-mcp-server` (device-code flow, 200+ Graph tools).
+
+1) Create an Azure Entra App Registration (public client / device code).
+
+2) Configure an MCP server named `ms365`:
+
+```jsonc
+{
+  "mcp_servers": {
+    "ms365": {
+      "command": "npx",
+      "args": ["-y", "@softeria/ms-365-mcp-server", "--preset", "mail"],
+      "env": {
+        "MS365_MCP_CLIENT_ID": "YOUR_AZURE_APP_CLIENT_ID",
+        "MS365_MCP_TENANT_ID": "consumers"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+Notes:
+- For personal Microsoft accounts, set `MS365_MCP_TENANT_ID=consumers` (device flow + refresh tokens are more reliable than `common`).
+- Start with `--read-only` if you want to disable writes until you trust the workflow.
+
+Once connected, tools show up as `mcp__ms365__*` and can be used by playbooks (see `.openmono/playbooks/`).
+
+Playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/postmaster_outlook
+cp setup/playbooks/postmaster_outlook/PLAYBOOK.md ~/.openmono/playbooks/postmaster_outlook/PLAYBOOK.md
+```
+
+---
+
 ## See also (full flow)
 
 - [README quickstart + Genius + OSS stack](../README.md)
