@@ -891,6 +891,20 @@ cmd_agent() {
         agent "$@"
 }
 
+# ── captain (local-only always-on org engine) ──────────────────────────────────
+
+cmd_captain() {
+    # Captain must run on the host so it can watch + move/rename real files.
+    # Prefer the published native binary if installed; otherwise run from source.
+    if [[ -x "$HOME/.openmono/bin/openmono" ]]; then
+        exec "$HOME/.openmono/bin/openmono" captain "$@"
+    fi
+
+    # Source tree fallback (developer / repo clone).
+    cd "$REPO_DIR"
+    exec dotnet run --project src/OpenMono.Cli -- captain "$@"
+}
+
 cmd_logs() {
     if [[ "$NATIVE_INFERENCE" == "true" ]]; then
 
@@ -1310,6 +1324,7 @@ case "$COMMAND" in
     stop)           cmd_stop ;;
     restart)        cmd_restart ;;
     agent)          cmd_agent "${AGENT_FORWARD[@]+"${AGENT_FORWARD[@]}"}" "$@" ;;
+    captain)        cmd_captain "$@" ;;
     logs)           cmd_logs ;;
     status)         cmd_status ;;
     graph)          cmd_graph "$@" ;;

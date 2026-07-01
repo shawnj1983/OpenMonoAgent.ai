@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenMono.Acp;
+using OpenMono.Captain;
 using OpenMono.Commands;
 using OpenMono.Config;
 using OpenMono.History;
@@ -24,6 +25,27 @@ var noAcp = false;
 int? acpPort = null;
 var acpOnly = false;
 var genius = false;
+
+// Top-level subcommands (run outside the interactive agent loop).
+// The bash wrapper uses these (e.g. `openmono captain start`).
+if (args.Length > 0 && args[0].Equals("captain", StringComparison.OrdinalIgnoreCase))
+{
+    var renderer = new TerminalRenderer();
+    var config = ConfigLoader.Load(workdir, configPath, warn: msg => renderer.WriteWarning(msg));
+    if (verbose) config.Verbose = true;
+    renderer.Verbose = config.Verbose;
+
+    using var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
+    var captainArgs = args.Skip(1).ToArray();
+    var exit = await CaptainCli.RunAsync(captainArgs, config, renderer, cts.Token);
+    return exit;
+}
 
 // Env-var fallback for --acp-only (set by the VS Code extension for headless
 // detached containers). The OPENMONO_ACP_ENABLED counterpart is consumed
@@ -187,6 +209,7 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     tools.Register(new GlobTool());
     tools.Register(new GrepTool());
     tools.Register(new BashTool());
+    tools.Register(new CaptainFileOpsTool());
     tools.Register(new AgentTool());
     tools.Register(new TodoTool());
     tools.Register(new AskUserTool());
