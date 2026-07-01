@@ -33,7 +33,7 @@ public static class CaptainDaemon
                     if (ct.IsCancellationRequested) break;
                     try
                     {
-                        HandleEvent(ev, rules, ops, indexer);
+                        HandleEvent(ev, rules, ops, indexer, renderer);
                     }
                     catch (Exception ex)
                     {
@@ -46,7 +46,7 @@ public static class CaptainDaemon
         }
     }
 
-    private static void HandleEvent(CaptainEvent ev, CaptainRules rules, CaptainFileOps ops, CaptainIndexer indexer)
+    private static void HandleEvent(CaptainEvent ev, CaptainRules rules, CaptainFileOps ops, CaptainIndexer indexer, IRenderer renderer)
     {
         // Ignore directory events; we index files only.
         if (Directory.Exists(ev.Path))
@@ -54,6 +54,7 @@ public static class CaptainDaemon
 
         if (ev.Type is "fs_deleted")
         {
+            renderer.WriteInfo($"Index remove: {ev.Path}");
             indexer.RemoveFile(ev.Path);
             return;
         }
@@ -78,12 +79,15 @@ public static class CaptainDaemon
 
             var destDir = Path.Combine(organizedRoot, bucket);
             var dest = Path.Combine(destDir, newName);
+            renderer.WriteInfo($"Organize inbox: {path} -> {dest}");
             ops.Move(path, dest);
+            renderer.WriteInfo($"Index: {dest}");
             indexer.IndexFile(dest);
             return;
         }
 
         // Outside inbox: keep in place, but index (incremental).
+        renderer.WriteInfo($"Index: {path}");
         indexer.IndexFile(path);
     }
 
