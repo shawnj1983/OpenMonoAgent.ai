@@ -484,3 +484,34 @@ openmono config get llm.endpoint
 ```
 
 → [Full configuration reference](CONFIG.md)
+
+---
+
+## OpenSearch (opensearch-skills)
+
+For genius-mode persistent memory, semantic code search, log analytics, and RCA:
+
+1. Run OpenSearch (e.g. `docker run -p 9200:9200 -p 9600:9600 -e "discovery.type=single-node" opensearchproject/opensearch:latest` or use scripts/start_opensearch.sh from opensearch-agent-skills).
+
+2. Configure:
+   ```
+   export OPENSEARCH_URL=http://localhost:9200
+   # optional:
+   # export OPENSEARCH_USERNAME=admin
+   # export OPENSEARCH_PASSWORD=admin
+   ```
+   Or in `~/.openmono/settings.json`:
+   ```json
+   { "openSearch": { "url": "http://localhost:9200" } }
+   ```
+
+3. The agent auto-registers the `opensearch` MCP server (via `uvx opensearch-mcp-server-py@latest` — install uv if needed).
+
+Use via tools or in genius mode for:
+- Vector + BM25 hybrid memory beyond session files.
+- Codebase semantic search.
+- Log pattern analysis and trace debugging (see log-analytics / trace-analytics in opensearch-skills).
+
+MCP tools appear as `mcp__opensearch__*`.
+
+See opensearch-project/opensearch-mcp-server-py and the attached skill for full usage (launchpad, ops.py, ui).

@@ -84,6 +84,35 @@ It's a full [agentic loop](docs/ARCHITECTURE.md): 20 tools, sub-agents, Docker s
 | **UI** | TUI + CLI | Web, Desktop, VS Code, CLI | TUI, Desktop, Web |
 ---
 
+## Genius Mode (autopsy / thick 10x / kill critic)
+
+Inspired by full long-context reasoning (e.g. Anima 100K holistic synthesis over entire books vs sparse RAG):
+
+```bash
+openmono agent --genius
+# or inside:
+# /genius
+```
+
+- **Autopsy**: full-file + full-history + OS-backed search/memory deep dissection.
+- **Thick 10x**: 10+ internal iterations, self-refine before answer.
+- **Kill critic**: bold, decisive, no hedging in final output.
+
+Requires large context GGUF (or use OS as external memory). Works with sub-agents (Genius type) and durable backends.
+
+See docs for OpenSearch integration (vector memory, semantic search) and durable agents (Dapr/Temporal).
+
+### Fully OSS tools for success (research compiled)
+- **Long/full context (genius autopsy)**: llama.cpp + ring-flash-attention + long-context-attention (USP/Ring), SGLang/vLLM CP, NeMo CP (100k-10M tokens).
+- **Search / Memory / Observability (opensearch-skills)**: opensearch-mcp-server-py (MCP stdio/SSE/HTTP), OpenRAG (Docling+Langflow+OS+built-in MCP), RAG-C (MCP-first hybrid), OS native Flow/ReAct/plan-execute agents + connectors. For semantic code, agentic memory, logs/traces/RCA.
+- **Durable/stateful agents (agents-sdk equiv)**: Dapr Agents (CNCF, workflows, state, MCP), Temporal (+antgent/durable-agents for plan-execute), Conductor, DuraGraph, Helix. Patterns: persistent state, scheduling, workflows, human-in-loop.
+- **MCP + Ext**: OpenSearch MCP, code-review-graph (built-in), full C# MCP SDK (ModelContextProtocol) for custom .NET servers, uvx for py servers.
+- **Orch/Other**: Playbooks (gated), sub-agents, SearXNG/Scrapling (private web), graphify.
+
+All zero closed source. See attached skills + research for install.
+
+---
+
 ## What's inside
 
 <table>

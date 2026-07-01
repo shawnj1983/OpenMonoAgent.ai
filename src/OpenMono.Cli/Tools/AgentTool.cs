@@ -41,7 +41,7 @@ public sealed class AgentTool : ToolBase
         .AddString("description", "Short description of the task (3-5 words)")
         .AddString("prompt", "Detailed instructions for the sub-agent")
         .AddEnum("agent_type", "Agent type determines available tools (default: general-purpose)",
-            "general-purpose", "Explore", "Plan", "Coder", "Verify")
+            "general-purpose", "Explore", "Plan", "Coder", "Verify", "Genius")
         .Require("description", "prompt");
 
     public IReadOnlyList<Capability> RequiredCapabilities(JsonElement input)
@@ -59,6 +59,11 @@ public sealed class AgentTool : ToolBase
 
         if (!BuiltInAgents.All.TryGetValue(agentType, out var agentDef))
             return ToolResult.Error($"Unknown agent type: {agentType}. Valid: {string.Join(", ", BuiltInAgents.All.Keys)}");
+
+        if (context.Config.DurableAgents.Enabled)
+        {
+            context.WriteOutput($"[DurableAgents/{context.Config.DurableAgents.Backend}] Sub-agent will use durable backend (Dapr/Temporal primary; CF opt) for stateful resumable execution per agents-sdk patterns.");
+        }
 
         var depth = context.AgentDepth;
         var agentsCfg = context.Config.Agents;

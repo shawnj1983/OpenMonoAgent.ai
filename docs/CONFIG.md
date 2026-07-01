@@ -16,7 +16,7 @@ Commands are grouped by which box they run on.
 
 | Command | Description |
 |---------|-------------|
-| `openmono agent` | Run the coding agent in the current directory |
+| `openmono agent [--genius]` | Run the coding agent (use --genius for deep autopsy mode) |
 | `openmono graph [path]` | Build the code-review-graph index for a project |
 | `openmono graphify [path]` | Build the Graphify knowledge graph for a project |
 

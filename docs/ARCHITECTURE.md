@@ -196,8 +196,13 @@ Spawns an isolated session with a restricted tool set and a dedicated system pro
 | `Plan` | 10 | + TodoWrite (no writes) | architecture planning |
 | `Coder` | 30 | FileRead/Write/Edit, Glob, Grep, Bash | implementation |
 | `Verify` | 20 | FileRead, Glob, Grep, Bash, Roslyn, LSP, MCP | adversarial testing |
+| `Genius` | 500 | * (full) | deep autopsy, thick 10x, kill-critic full-context analysis (long-ctx + OS) |
 
 Tool allow-lists support wildcards (`*`, `mcp__*`).
+
+Genius mode (via /genius or --genius) raises iteration cap 10x, preserves full context (skips compaction), forces thinking, and injects special autopsy directives. Pair with OpenSearch MCP for external vector memory.
+
+Durable backends (Dapr/Temporal primary) make Genius/Playbook sub-agents crash-resilient (agents-sdk patterns).
 
 ---
 

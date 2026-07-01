@@ -1,5 +1,7 @@
 namespace OpenMono.Agents;
 
+using OpenMono.Session;
+
 public sealed record AgentDefinition
 {
     public required string Name { get; init; }
@@ -157,6 +159,22 @@ public static class BuiltInAgents
             """,
     };
 
+    public static readonly AgentDefinition Genius = new()
+    {
+        Name = "Genius",
+        Description = "Genius sub-agent for deep full-context autopsy analysis (thick 10x thinking, kill the critic, bold decisive conclusions)",
+        AllowedTools = ["*"],
+        MaxTurns = 500,
+        SystemPrompt = GeniusModeInstructions.Activation("spawned as Genius sub-agent for deep analysis") + """
+
+            As a Genius sub-agent:
+            - You have full tool access.
+            - Perform thick 10x iterative analysis over the complete context.
+            - Deliver bold, authoritative, non-hedged findings and conclusions.
+            - Return a comprehensive autopsy report when complete.
+            """,
+    };
+
     public static IReadOnlyDictionary<string, AgentDefinition> All { get; } = new Dictionary<string, AgentDefinition>(StringComparer.OrdinalIgnoreCase)
     {
         ["general-purpose"] = GeneralPurpose,
@@ -164,5 +182,6 @@ public static class BuiltInAgents
         ["Plan"] = Plan,
         ["Coder"] = Coder,
         ["Verify"] = Verify,
+        ["Genius"] = Genius,
     };
 }

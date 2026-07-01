@@ -8,6 +8,7 @@
 
 ## In Progress
 
+- [x] Genius Mode (autopsy / thick-10x / kill-critic) + opensearch-skills + durable agents (OSS Dapr/Temporal + CF opt)
 - [ ] `openmono stop` not working, it is not stopping llama-server correctly
 - [ ] Colored diff display for file edits
 - [ ] Git branch + status injected into system prompt

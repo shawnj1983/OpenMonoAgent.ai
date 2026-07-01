@@ -11,6 +11,8 @@ public sealed class AppConfig
     public HookConfig Hooks { get; set; } = new();
     public PlaybookConfig Playbooks { get; set; } = new();
     public AgentConfig Agents { get; set; } = new();
+    public OpenSearchConfig OpenSearch { get; set; } = new();
+    public DurableConfig DurableAgents { get; set; } = new();
     public Dictionary<string, ProviderSettings> Providers { get; set; } = [];
     public Dictionary<string, ModelPresetSettings> ModelPresets { get; set; } = [];
     public Dictionary<string, McpServerSettings> McpServers { get; set; } = [];
@@ -160,4 +162,21 @@ public sealed class AgentConfig
         if (source.MaxQueuedAgents > 0) MaxQueuedAgents = source.MaxQueuedAgents;
         if (source.MaxConcurrentPerParent > 0) MaxConcurrentPerParent = source.MaxConcurrentPerParent;
     }
+}
+
+public sealed class OpenSearchConfig
+{
+    public string? Url { get; set; } = Environment.GetEnvironmentVariable("OPENSEARCH_URL");
+    public string? Username { get; set; } = Environment.GetEnvironmentVariable("OPENSEARCH_USERNAME");
+    public string? Password { get; set; } = Environment.GetEnvironmentVariable("OPENSEARCH_PASSWORD");
+    public string IndexPrefix { get; set; } = Environment.GetEnvironmentVariable("OPENSEARCH_INDEX_PREFIX") ?? "openmono";
+    public bool Enabled => !string.IsNullOrWhiteSpace(Url);
+}
+
+public sealed class DurableConfig
+{
+    /// <summary>Primary OSS backend: "dapr", "temporal", or "none". CF Agents SDK as opt-in alternative.</summary>
+    public string Backend { get; set; } = Environment.GetEnvironmentVariable("OPENMONO_DURABLE_BACKEND") ?? "none";
+    public string? Endpoint { get; set; } = Environment.GetEnvironmentVariable("OPENMONO_DURABLE_ENDPOINT");
+    public bool Enabled => Backend != "none" && !string.IsNullOrWhiteSpace(Endpoint);
 }
