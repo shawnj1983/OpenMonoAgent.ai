@@ -317,10 +317,10 @@ cmd_version() {
 
 cmd_help() {
     echo ""
-    echo -e "${BLUE}╔══════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║        OpenMono.ai — AI Agent        ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
-    echo -e "  version $OPENMONO_VERSION"
+    echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║           OpenMono.ai — Local Coding Agent (OSS)         ║${NC}"
+    echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
+    echo -e "  version $OPENMONO_VERSION   •  TUI + --genius + MCP + Playbooks"
     echo ""
     echo "Usage: openmono [--verbose|-v] <command>"
     echo ""

@@ -38,8 +38,13 @@ if ($Run) {
 }
 else {
     Write-Host ""
-    Write-Host "Build complete. Start the agent for your project with:"
+    Write-Host "✅ Build complete (Release)." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Run the agent (VS Code / Cursor ACP mode):"
     Write-Host "  dotnet run --project `"$csproj`" -c Release -- --workdir `"$Workdir`" --acp-only --acp-port $AcpPort"
     Write-Host ""
-    Write-Host "Then open the same folder in VS Code / Cursor and open the OpenMono Agent panel."
+    Write-Host "Or for interactive TUI:"
+    Write-Host "  dotnet run --project `"$csproj`" -c Release -- --workdir `"$Workdir`""
+    Write-Host ""
+    Write-Host "In editor: open the 'OpenMono Agent' panel."
 }

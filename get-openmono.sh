@@ -67,6 +67,16 @@ ok "Repository ready at $INSTALL_DIR"
 
 chmod +x "$INSTALL_DIR/openmono" "$INSTALL_DIR/scripts/"*.sh
 
+echo ""
+echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║  OpenMono.ai is ready. Next steps:                         ║${NC}"
+echo -e "${GREEN}║                                                            ║${NC}"
+echo -e "${GREEN}║   cd your-project/                                         ║${NC}"
+echo -e "${GREEN}║   openmono agent                 # launch the TUI          ║${NC}"
+echo -e "${GREEN}║   openmono agent --genius        # deep full-ctx autopsy   ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
 # ── Hand off to openmono setup (passes all flags through) ────────────────────
 
 # When piped through curl, stdin is the pipe not the terminal — restore it so

@@ -4,7 +4,7 @@
 
 <div align="center">
   <strong>Open-source coding agent. Local-first. Zero cost. Zero cloud.</strong><br/>
-  <sub>Built to democratize AI. Powered by .NET.</sub>
+  <sub>Full-context “Genius” mode • Playbooks • MCP • 20 native tools • 100% yours</sub>
 </div>
 
 <br>
@@ -37,29 +37,61 @@ OpenMono is a coding agent that runs entirely on your hardware — no subscripti
 
 ---
 
-## Quickstart
+## Quickstart — Pro install (one line)
 
-```
+```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/StartupHakk/OpenMonoAgent.ai/refs/heads/main/get-openmono.sh)
 ```
 
-Then from any project:
+The installer detects your hardware and walks you through a single choice (full / inference-only / agent-only).
+
+### After install, in any project:
 
 ```bash
 cd your-project/
-
-openmono agent          # TUI mode (default)
-openmono agent --classic    # classic scrolling terminal
+openmono agent                 # Beautiful TUI (recommended)
+openmono agent --classic       # Classic scrolling terminal
+openmono agent --genius        # Deep full-context "autopsy" mode (thick 10× thinking + kill the critic)
 ```
 
 <div align="center">
   <img src="docs/assets/tui-snapshot-openmono.png" alt="OpenMono TUI" width="780" />
 </div>
 
-> [!NOTE]
-> TUI mode is the default for interactive terminals. Use `openmono  agent --classic` for CLI.
+> **TUI** is the default in interactive terminals.  
+> Use `--classic` for pipes/CI/scripts.  
+> Use `--genius` (or `/genius` inside) when you want exhaustive, confident, full-file analysis.
 
-→ [Full command reference](docs/SETUP.md) — daily commands, setup flags, GPU/CPU options
+**After the installer finishes you should see:**
+
+```
+✅ OpenMono.ai is ready to use!
+```
+
+Then just:
+
+```bash
+cd your-project/
+openmono agent
+```
+
+**Pro checklist (first 60 seconds)**
+- [ ] `openmono status` — confirms model + endpoint
+- [ ] Type a question or `/help`
+- [ ] Try `/genius Explain the hardest part of this codebase`
+- [ ] `/plan` for safe architecture work before edits
+
+**Prerequisites (auto-installed where possible)**
+
+| Platform | Min | Recommended |
+|----------|-----|-------------|
+| Linux (NVIDIA) | 12 GB VRAM | 24 GB+ |
+| Linux (CPU) | 24 GB RAM | 32–64 GB |
+| macOS | M1+ , 16 GB unified | M2/M3 64 GB+ |
+
+Full details + troubleshooting: [docs/SETUP.md](docs/SETUP.md)
+
+→ [All slash commands & keyboard shortcuts](docs/SETUP.md#slash-commands)
 
 ---
 
@@ -86,21 +118,26 @@ It's a full [agentic loop](docs/ARCHITECTURE.md): 20 tools, sub-agents, Docker s
 
 ## Genius Mode (autopsy / thick 10x / kill critic)
 
-Inspired by full long-context reasoning (e.g. Anima 100K holistic synthesis over entire books vs sparse RAG):
+The local OSS answer to "Claude Code with 1M token context on any model (including free ones on OpenRouter)".
 
 ```bash
 openmono agent --genius
-# or inside:
+# or inside TUI:
 # /genius
 ```
 
-- **Autopsy**: full-file + full-history + OS-backed search/memory deep dissection.
-- **Thick 10x**: 10+ internal iterations, self-refine before answer.
-- **Kill critic**: bold, decisive, no hedging in final output.
+- **Autopsy**: full-file + full-history + OS-backed search/memory deep dissection (the 1M context "source version" experience).
+- **Thick 10x**: 10+ (or more) internal iterations, self-refine before final answer.
+- **Kill critic**: bold, decisive, no hedging.
 
-Requires large context GGUF (or use OS as external memory). Works with sub-agents (Genius type) and durable backends.
+TUI painter gives strong visual affordances (purple 🧠 GENIUS badges, "Autopsy" thinking labels, special input border, sidebar modes, first-run tips).
 
-See docs for OpenSearch integration (vector memory, semantic search) and durable agents (Dapr/Temporal).
+**Use it exactly like Claude Code + CCR:**
+- Point at Gemini 1M (via OpenRouter free/paid) or any long-ctx local model
+- Add OpenSearch for effectively unlimited external memory
+- Run `--genius` for the thick reasoning loop
+
+See SETUP.md "1M Context + Claude Code Router" for exact config + comparison. Requires large context GGUF (or use OS as external memory). Works with Genius sub-agents and durable backends.
 
 ### Fully OSS tools for success (research compiled)
 - **Long/full context (genius autopsy)**: llama.cpp + ring-flash-attention + long-context-attention (USP/Ring), SGLang/vLLM CP, NeMo CP (100k-10M tokens).
