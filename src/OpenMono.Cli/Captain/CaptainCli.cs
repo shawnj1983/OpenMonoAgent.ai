@@ -1,5 +1,7 @@
+using System.Text.Json;
 using System.Diagnostics;
 using OpenMono.Config;
+using OpenMono.Mcp;
 using OpenMono.Rendering;
 
 namespace OpenMono.Captain;
@@ -38,6 +40,8 @@ public static class CaptainCli
                 return await ScanAsync(config, renderer, ct);
             case "query":
                 return await QueryAsync(rest, config, renderer);
+            case "mcp-smoke":
+                return await McpSmokeAsync(config, renderer, ct);
             default:
                 renderer.WriteError($"Unknown captain subcommand: {sub}");
                 PrintHelp(renderer);
@@ -60,6 +64,7 @@ public static class CaptainCli
               `openmono captain undo`        Undo the last successful move/rename
               `openmono captain scan`        Scan roots and build/update the local index
               `openmono captain query <q>`   Search the index (paths + snippets)
+              `openmono captain mcp-smoke`   Smoke test Outlook + browser MCP connectivity (for demos)
 
             Safety defaults:
             - Moves/renames allowed.
@@ -288,6 +293,165 @@ public static class CaptainCli
         }
 
         return Task.FromResult(0);
+    }
+
+    private static async Task<int> McpSmokeAsync(AppConfig config, IRenderer renderer, CancellationToken ct)
+    {
+        if (!config.McpServers.TryGetValue("ms365", out var ms365) || !ms365.Enabled)
+        {
+            renderer.WriteWarning("MCP smoke: missing enabled MCP server config named 'ms365'.");
+            return 1;
+        }
+
+        if (!config.McpServers.TryGetValue("chrome-devtools", out var chrome) || !chrome.Enabled)
+        {
+            renderer.WriteWarning("MCP smoke: missing enabled MCP server config named 'chrome-devtools'.");
+            return 1;
+        }
+
+        renderer.WriteInfo("MCP smoke: connecting to 'ms365'…");
+        using (var client = await McpClient.ConnectAsync(ToMcpConfig("ms365", ms365), ct))
+        {
+            var tools = await client.ListToolsAsync(ct);
+            renderer.WriteInfo($"MCP ms365 tools: {CountTools(tools)}");
+
+            var inbox = await client.CallToolAsync("list_inbox", JsonSerializer.SerializeToElement(new { }), ct);
+            var messages = FirstContentData(inbox).GetProperty("messages");
+            if (messages.ValueKind == JsonValueKind.Array && messages.GetArrayLength() > 0)
+            {
+                var first = messages[0];
+                var id = first.GetProperty("id").GetString() ?? "";
+                var subject = first.TryGetProperty("subject", out var s) ? s.GetString() ?? "" : "";
+                renderer.WriteInfo($"MCP ms365 inbox[0]: {id} — {subject}");
+
+                _ = await client.CallToolAsync(
+                    "add_category",
+                    JsonSerializer.SerializeToElement(new { messageId = id, category = "captain_demo" }),
+                    ct);
+
+                var inbox2 = await client.CallToolAsync("list_inbox", JsonSerializer.SerializeToElement(new { }), ct);
+                var messages2 = FirstContentData(inbox2).GetProperty("messages");
+                var updated = messages2.EnumerateArray().FirstOrDefault(m => (m.GetProperty("id").GetString() ?? "") == id);
+                if (updated.ValueKind != JsonValueKind.Undefined &&
+                    updated.TryGetProperty("categories", out var cats) &&
+                    cats.ValueKind == JsonValueKind.Array)
+                {
+                    renderer.WriteInfo($"MCP ms365 labeled: {id} categories=[{string.Join(", ", cats.EnumerateArray().Select(c => c.GetString() ?? ""))}]");
+                }
+            }
+            else
+            {
+                renderer.WriteWarning("MCP ms365 inbox is empty (or tool returned no messages).");
+            }
+        }
+
+        renderer.WriteInfo("MCP smoke: connecting to 'chrome-devtools'…");
+        string? capturedPath = null;
+        using (var client = await McpClient.ConnectAsync(ToMcpConfig("chrome-devtools", chrome), ct))
+        {
+            var tools = await client.ListToolsAsync(ct);
+            renderer.WriteInfo($"MCP chrome-devtools tools: {CountTools(tools)}");
+
+            var pagesRes = await client.CallToolAsync("list_pages", JsonSerializer.SerializeToElement(new { }), ct);
+            var pages = FirstContentData(pagesRes).GetProperty("pages");
+            if (pages.ValueKind != JsonValueKind.Array || pages.GetArrayLength() == 0)
+            {
+                renderer.WriteWarning("MCP chrome-devtools returned no pages.");
+                return 1;
+            }
+
+            var first = pages[0];
+            var pageId = first.GetProperty("id").GetString() ?? "1";
+            _ = await client.CallToolAsync("select_page", JsonSerializer.SerializeToElement(new { id = pageId }), ct);
+
+            var evalRes = await client.CallToolAsync(
+                "evaluate_script",
+                JsonSerializer.SerializeToElement(new
+                {
+                    script = "() => ({ title: document.title, url: location.href, text: document.body.innerText })"
+                }),
+                ct);
+            var eval = FirstContentData(evalRes);
+            var title = eval.TryGetProperty("title", out var t) ? t.GetString() ?? "captured_page" : "captured_page";
+            var url = eval.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
+            var text = eval.TryGetProperty("text", out var body) ? body.GetString() ?? "" : "";
+
+            var capturesDir = Path.Combine(config.WorkingDirectory, ".captain_captures");
+            Directory.CreateDirectory(capturesDir);
+            capturedPath = Path.Combine(capturesDir, $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{SafeSlug(title)}.md");
+
+            var md = $"""
+                # {title}
+
+                URL: {url}
+                CapturedAtUtc: {DateTime.UtcNow:o}
+
+                ## Summary
+                - MCP smoke capture
+
+                ## Text
+
+                {text}
+                """;
+
+            await File.WriteAllTextAsync(capturedPath, md, ct);
+            renderer.WriteInfo($"MCP chrome-devtools saved capture: {capturedPath}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(capturedPath))
+        {
+            var rules = CaptainRulesStore.LoadOrDefault(config);
+            var indexer = new CaptainIndexer(config, rules);
+            indexer.IndexFile(capturedPath);
+            var hits = indexer.Search("Example Domain", limit: 5);
+            renderer.WriteInfo($"MCP smoke: indexed capture hits={hits.Count}");
+        }
+
+        renderer.WriteInfo("MCP smoke: OK");
+        return 0;
+    }
+
+    private static McpServerConfig ToMcpConfig(string name, McpServerSettings settings) => new()
+    {
+        Name = name,
+        Command = settings.Command,
+        Args = settings.Args,
+        Env = settings.Env,
+        WorkingDirectory = settings.WorkingDirectory,
+        Enabled = settings.Enabled,
+    };
+
+    private static int CountTools(JsonElement listToolsResult)
+    {
+        if (listToolsResult.TryGetProperty("tools", out var tools) && tools.ValueKind == JsonValueKind.Array)
+            return tools.GetArrayLength();
+        return 0;
+    }
+
+    private static JsonElement FirstContentData(JsonElement toolCallResult)
+    {
+        if (toolCallResult.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in content.EnumerateArray())
+            {
+                if (item.TryGetProperty("data", out var data))
+                    return data;
+            }
+        }
+
+        return toolCallResult;
+    }
+
+    private static string SafeSlug(string input)
+    {
+        var sb = new System.Text.StringBuilder(input.Length);
+        foreach (var ch in input)
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(char.ToLowerInvariant(ch));
+            else if (ch is ' ' or '-' or '_' or '.') sb.Append('_');
+        }
+        var s = sb.ToString().Trim('_');
+        return string.IsNullOrWhiteSpace(s) ? "capture" : s[..Math.Min(s.Length, 64)];
     }
 
     private static bool ProcessExists(int pid)
