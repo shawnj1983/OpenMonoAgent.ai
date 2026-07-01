@@ -121,6 +121,51 @@ public sealed class CaptainLocalIndexStore
         return (reader.GetInt64(0), reader.GetString(1));
     }
 
+    public IReadOnlyList<CaptainSearchHit> ListOldest(string? underPath, int limit = 20)
+    {
+        limit = Math.Clamp(limit, 1, 200);
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+
+        if (!string.IsNullOrWhiteSpace(underPath))
+        {
+            var prefix = underPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+
+            cmd.CommandText = """
+                SELECT path, size, mtime_utc
+                FROM files
+                WHERE path LIKE $prefix
+                ORDER BY mtime_utc ASC
+                LIMIT $limit;
+                """;
+            cmd.Parameters.AddWithValue("$prefix", prefix + "%");
+        }
+        else
+        {
+            cmd.CommandText = """
+                SELECT path, size, mtime_utc
+                FROM files
+                ORDER BY mtime_utc ASC
+                LIMIT $limit;
+                """;
+        }
+
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        var hits = new List<CaptainSearchHit>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            hits.Add(new CaptainSearchHit(
+                Path: reader.GetString(0),
+                Snippet: null,
+                Size: reader.GetInt64(1),
+                MtimeUtc: reader.GetString(2)));
+        }
+        return hits;
+    }
+
     public IReadOnlyList<CaptainSearchHit> Search(string query, int limit = 20)
     {
         using var conn = Open();

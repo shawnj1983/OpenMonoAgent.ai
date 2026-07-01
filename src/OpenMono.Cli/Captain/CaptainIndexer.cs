@@ -101,6 +101,9 @@ public sealed class CaptainIndexer
             ? TryOpenSearchFirst(query, limit)
             : _store.Search(query, limit);
 
+    public IReadOnlyList<CaptainSearchHit> ListOldest(string? underPath, int limit = 20) =>
+        _store.ListOldest(underPath, limit);
+
     public void RemoveFile(string path)
     {
         var resolved = Path.GetFullPath(path, _config.WorkingDirectory);

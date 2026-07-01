@@ -42,6 +42,8 @@ public static class CaptainCli
                 return await ScanAsync(config, renderer, ct);
             case "query":
                 return await QueryAsync(rest, config, renderer);
+            case "oldest":
+                return await OldestAsync(rest, config, renderer);
             case "mcp-smoke":
                 return await McpSmokeAsync(config, renderer, ct);
             case "browser-smoke":
@@ -68,6 +70,7 @@ public static class CaptainCli
               `openmono captain undo`        Undo the last successful move/rename
               `openmono captain scan`        Scan roots and build/update the local index
               `openmono captain query <q>`   Search the index (paths + snippets)
+              `openmono captain oldest [path] [--limit N]`  List the oldest indexed files (optionally under a path)
               `openmono captain mcp-smoke`   Smoke test Outlook + browser MCP connectivity (for demos)
               `openmono captain browser-smoke`  Smoke test full browser control (Playwright)
 
@@ -298,6 +301,68 @@ public static class CaptainCli
         }
 
         return Task.FromResult(0);
+    }
+
+    private static Task<int> OldestAsync(string[] args, AppConfig config, IRenderer renderer)
+    {
+        var limit = 20;
+        string? path = null;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            var next = i + 1 < args.Length ? args[i + 1] : null;
+
+            if (a == "--limit" && next is not null && int.TryParse(next, out var n))
+            {
+                limit = n;
+                i++;
+                continue;
+            }
+
+            if (!a.StartsWith('-') && path is null)
+            {
+                path = a;
+                continue;
+            }
+        }
+
+        if (path is null)
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var desktopGuess = Path.Combine(home, "Desktop");
+            path = desktopGuess;
+        }
+        
+        var rules = CaptainRulesStore.LoadOrDefault(config);
+        var indexer = new CaptainIndexer(config, rules);
+
+        var under = string.IsNullOrWhiteSpace(path) ? null : Path.GetFullPath(ExpandHome(path), config.WorkingDirectory);
+        var hits = indexer.ListOldest(under, limit);
+
+        if (hits.Count == 0)
+        {
+            renderer.WriteInfo("No indexed files found for that path.");
+            renderer.WriteInfo("Tip: ensure the folder is in captain roots, then run: `openmono captain scan`");
+            return Task.FromResult(0);
+        }
+
+        renderer.WriteInfo($"Oldest files ({hits.Count}) under: {under}");
+        foreach (var h in hits)
+            renderer.WriteInfo($"{h.MtimeUtc}  {h.Path}  ({h.Size} bytes)");
+
+        return Task.FromResult(0);
+    }
+
+    private static string ExpandHome(string path)
+    {
+        if (!path.StartsWith('~'))
+            return path;
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (path == "~") return home;
+        if (path.StartsWith("~/") || path.StartsWith("~\\"))
+            return Path.Combine(home, path[2..]);
+        return path;
     }
 
     private static async Task<int> McpSmokeAsync(AppConfig config, IRenderer renderer, CancellationToken ct)
