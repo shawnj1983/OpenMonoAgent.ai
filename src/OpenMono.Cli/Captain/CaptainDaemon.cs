@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenMono.Config;
 using OpenMono.Rendering;
 
@@ -18,6 +19,7 @@ public static class CaptainDaemon
         renderer.WriteInfo($"Captain organized root: {rules.Organization.OrganizedRoot ?? "(none)"}");
 
         var ops = new CaptainFileOps(config, rules);
+        var journal = new CaptainActionJournal(config);
         var indexer = new CaptainIndexer(config, rules);
         var queue = new CaptainEventQueue(config);
         using var watcher = new FileWatchService(queue, rules, renderer);
@@ -33,7 +35,7 @@ public static class CaptainDaemon
                     if (ct.IsCancellationRequested) break;
                     try
                     {
-                        HandleEvent(ev, rules, ops, indexer, renderer);
+                        HandleEvent(ev, rules, ops, indexer, journal, renderer);
                     }
                     catch (Exception ex)
                     {
@@ -46,7 +48,7 @@ public static class CaptainDaemon
         }
     }
 
-    private static void HandleEvent(CaptainEvent ev, CaptainRules rules, CaptainFileOps ops, CaptainIndexer indexer, IRenderer renderer)
+    private static void HandleEvent(CaptainEvent ev, CaptainRules rules, CaptainFileOps ops, CaptainIndexer indexer, CaptainActionJournal journal, IRenderer renderer)
     {
         // Ignore directory events; we index files only.
         if (Directory.Exists(ev.Path))
@@ -68,6 +70,14 @@ public static class CaptainDaemon
             rules.Organization.OrganizedRoot is { Length: > 0 } organizedRoot &&
             IsUnder(path, inbox))
         {
+            if (ShouldSuppressInboxReorg(path, journal))
+            {
+                renderer.WriteInfo($"Skip organize (recent undo): {path}");
+                renderer.WriteInfo($"Index: {path}");
+                indexer.IndexFile(path);
+                return;
+            }
+
             var fileName = Path.GetFileName(path);
             if (string.IsNullOrWhiteSpace(fileName)) return;
 
@@ -89,6 +99,25 @@ public static class CaptainDaemon
         // Outside inbox: keep in place, but index (incremental).
         renderer.WriteInfo($"Index: {path}");
         indexer.IndexFile(path);
+    }
+
+    private static bool ShouldSuppressInboxReorg(string inboxPath, CaptainActionJournal journal)
+    {
+        var last = journal.ReadLastSuccessful();
+        if (last is null) return false;
+        if (!string.Equals(last.Kind, "undo", StringComparison.Ordinal)) return false;
+
+        var pathEquals = OperatingSystem.IsWindows()
+            ? string.Equals(last.ToPath, inboxPath, StringComparison.OrdinalIgnoreCase)
+            : string.Equals(last.ToPath, inboxPath, StringComparison.Ordinal);
+
+        if (!pathEquals) return false;
+
+        if (!DateTime.TryParse(last.TimestampUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var ts))
+            return false;
+
+        // Avoid immediately re-organizing a file the user just undid.
+        return (DateTime.UtcNow - ts) < TimeSpan.FromSeconds(30);
     }
 
     private static string BucketForExtension(string ext) => ext switch
