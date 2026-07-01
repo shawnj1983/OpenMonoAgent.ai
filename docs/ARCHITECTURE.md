@@ -221,6 +221,26 @@ On startup, for each enabled MCP server in config:
 
 ---
 
+## Captain (local-first “information ship”)
+
+Captain is an *opt-in*, local-only subsystem that watches user-chosen filesystem roots, incrementally indexes file metadata + safe text content, and can auto-organize inbox folders using **move/rename only** (never delete).
+
+### Runtime + state
+
+- **CLI**: `openmono captain <init|start|run|status|stop|scan|query|undo>`
+- **State dir**: `~/.openmono/captain/`
+  - `rules.yml`: allowlisted roots + ignore tokens + organization settings
+  - `queue.jsonl` + `queue.cursor`: durable event queue for filesystem changes
+  - `actions.jsonl`: append-only journal for every move/rename + undo support
+  - `captain.db`: local index (SQLite + FTS5)
+
+### Index migrations (“migration-helper discipline”)
+
+- **SQLite schema** is versioned via `meta.schema_version` and upgraded by `CaptainDbMigrator` on startup.
+- **OpenSearch indices** are versioned with suffixes (e.g. `{prefix}_captain_files_v1`). Upgrades should follow an additive + backfill pattern: create the new index, dual-write during transition, then cut reads over (optionally via an alias) once reindex/backfill completes.
+
+---
+
 ## LSP client (`LspServerManager` + `LspClient`)
 
 Language servers start lazily on first call. File extension → language mapping:

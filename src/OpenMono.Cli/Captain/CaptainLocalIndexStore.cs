@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using OpenMono.Captain.Migrations;
 using OpenMono.Config;
 
 namespace OpenMono.Captain;
@@ -24,29 +25,7 @@ public sealed class CaptainLocalIndexStore
     public void EnsureSchema()
     {
         using var conn = Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS meta(
-              key TEXT PRIMARY KEY,
-              value TEXT NOT NULL
-            );
-
-            INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', '1');
-
-            CREATE TABLE IF NOT EXISTS files(
-              path TEXT PRIMARY KEY,
-              size INTEGER NOT NULL,
-              mtime_utc TEXT NOT NULL,
-              sha256 TEXT NULL,
-              ext TEXT NULL,
-              bucket TEXT NULL,
-              indexed_at_utc TEXT NOT NULL
-            );
-
-            CREATE VIRTUAL TABLE IF NOT EXISTS files_fts
-            USING fts5(path, content, tokenize='unicode61');
-            """;
-        cmd.ExecuteNonQuery();
+        _ = new CaptainDbMigrator(conn).EnsureLatest();
     }
 
     public void UpsertFile(string path, long size, DateTime mtimeUtc, string? sha256, string? content)
