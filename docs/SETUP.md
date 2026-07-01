@@ -608,9 +608,13 @@ See opensearch-project/opensearch-mcp-server-py and the attached skill for full 
 Captain is OpenMono’s local-first ingestion + organization engine:
 
 - Watches configured roots for changes (FileSystemWatcher)
-- Builds a persistent local index (SQLite + FTS) for fast Q&A with citations
+- Builds a persistent local index (SQLite + FTS) for fast Q&A with citations (safe text files + PDFs)
 - Safely auto-organizes **inbox folders** with **move + rename only** (no deletes)
 - Records every move/rename in an append-only journal and supports undo
+
+PDF notes:
+- Captain extracts the **text layer** from PDFs for search/Q&A (great for receipts and exports).
+- If a PDF is a scanned image (no embedded text), you’ll need OCR to make it searchable.
 
 Quickstart:
 

@@ -1,6 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.WordExtractor;
 using OpenMono.Captain.Migrations;
 using OpenMono.Config;
 
@@ -200,6 +204,9 @@ public sealed class CaptainLocalIndexStore
     public static string? TryExtractText(string path, long sizeBytes)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
+        if (ext == ".pdf")
+            return TryExtractPdfText(path, sizeBytes);
+
         if (!IsSafeTextExtension(ext))
             return null;
 
@@ -212,6 +219,49 @@ public sealed class CaptainLocalIndexStore
             // Try UTF-8 first, fall back to default if needed.
             var bytes = File.ReadAllBytes(path);
             return Encoding.UTF8.GetString(bytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryExtractPdfText(string path, long sizeBytes)
+    {
+        // PDFs can be bigger than plain text, but we still cap for responsiveness.
+        if (sizeBytes > 10_000_000)
+            return null;
+
+        try
+        {
+            using var doc = PdfDocument.Open(path);
+            var sb = new StringBuilder(capacity: 4096);
+
+            foreach (var page in doc.GetPages())
+            {
+                if (sb.Length > 200_000)
+                    break;
+
+                // Prefer layout-aware extraction; page.Text is raw content order and may be empty/garbled.
+                var text = ContentOrderTextExtractor.GetText(page, true);
+
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    // Fallback: try word extraction heuristics.
+                    var words = page.GetWords(NearestNeighbourWordExtractor.Instance)
+                        .Select((Word w) => w.Text)
+                        .ToList();
+                    text = words.Count > 0 ? string.Join(' ', words) : "";
+                }
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    sb.AppendLine(text);
+                    sb.AppendLine();
+                }
+            }
+
+            var result = sb.ToString();
+            return string.IsNullOrWhiteSpace(result) ? null : result;
         }
         catch
         {

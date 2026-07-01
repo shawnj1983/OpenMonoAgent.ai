@@ -234,6 +234,10 @@ Captain is an *opt-in*, local-only subsystem that watches user-chosen filesystem
   - `actions.jsonl`: append-only journal for every move/rename + undo support
   - `captain.db`: local index (SQLite + FTS5)
 
+Index content sources:
+- Safe text files (`.txt`, `.md`, source code, etc.)
+- PDFs (text layer extraction for receipts/exports; scanned PDFs require OCR)
+
 ### Index migrations (“migration-helper discipline”)
 
 - **SQLite schema** is versioned via `meta.schema_version` and upgraded by `CaptainDbMigrator` on startup.
