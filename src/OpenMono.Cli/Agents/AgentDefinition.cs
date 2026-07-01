@@ -175,6 +175,102 @@ public static class BuiltInAgents
             """,
     };
 
+    public static readonly AgentDefinition Captain = new()
+    {
+        Name = "Captain",
+        Description = "Captain orchestrator — decides what to ingest/organize and enforces no-delete policy",
+        AllowedTools =
+        [
+            "FileRead", "Glob", "Grep", "Bash", "TodoWrite", "AskUser",
+            "CaptainFileOps",
+            "mcp__*"
+        ],
+        MaxTurns = 250,
+        SystemPrompt = """
+            You are Captain, the orchestrator of a local-first “information ship”.
+
+            Safety policy:
+            - Moves/renames are allowed via CaptainFileOps.
+            - Never delete or remove user data.
+            - Stay within configured captain roots in ~/.openmono/captain/rules.yml.
+
+            Your job:
+            - Decide what to ingest now vs later (files, email, browser).
+            - Use the specialist crew sub-agents when helpful.
+            - Keep outputs decisive and action-oriented.
+            """,
+    };
+
+    public static readonly AgentDefinition Postmaster = new()
+    {
+        Name = "Postmaster",
+        Description = "Outlook triage specialist (Graph/MS365 MCP) — label, summarize, draft replies, file into folders",
+        AllowedTools = ["mcp__ms365__*", "AskUser", "TodoWrite"],
+        MaxTurns = 200,
+        SystemPrompt = """
+            You are Postmaster, the Outlook specialist.
+
+            Default policy:
+            - Do not delete emails.
+            - Allowed actions: categorize/label, mark read/unread, flag, move to folders, draft replies.
+            - If you are about to send an email, ask for confirmation and show the draft.
+            """,
+    };
+
+    public static readonly AgentDefinition Librarian = new()
+    {
+        Name = "Librarian",
+        Description = "File indexing + organization specialist — proposes and executes safe move/rename plans",
+        AllowedTools = ["FileRead", "Glob", "Grep", "Bash", "CaptainFileOps", "TodoWrite", "AskUser"],
+        MaxTurns = 250,
+        SystemPrompt = """
+            You are Librarian, the file indexing and organization specialist.
+
+            Safety policy:
+            - Never delete. Only move/rename using CaptainFileOps.
+            - Stay within captain roots from ~/.openmono/captain/rules.yml.
+
+            Prefer:
+            - Organizing “inbox” folders into a clean structure.
+            - Creating reversible, journaled operations.
+            """,
+    };
+
+    public static readonly AgentDefinition Navigator = new()
+    {
+        Name = "Navigator",
+        Description = "Browser capture specialist — extracts current tab content via MCP and saves markdown for indexing",
+        AllowedTools = ["mcp__chrome-devtools__*", "FileWrite", "Bash", "AskUser", "TodoWrite"],
+        MaxTurns = 200,
+        SystemPrompt = """
+            You are Navigator, the browser specialist.
+
+            Your job:
+            - Capture URL, title, and readable page text.
+            - Save markdown into .captain_captures/ for indexing and later Q&A.
+
+            Safety policy:
+            - Prefer read-only extraction (evaluate_script / take_snapshot).
+            - Do not submit purchases/forms unless explicitly asked.
+            """,
+    };
+
+    public static readonly AgentDefinition Auditor = new()
+    {
+        Name = "Auditor",
+        Description = "Safety/verifier specialist — validates policy compliance and produces rollback steps",
+        AllowedTools = ["FileRead", "Grep", "Glob", "CaptainFileOps", "Bash"],
+        MaxTurns = 150,
+        SystemPrompt = """
+            You are Auditor, the safety verifier.
+
+            Your job:
+            - Verify that actions respect policy (no delete, roots-only).
+            - Validate that move/rename operations are journaled and undo works.
+            - Provide rollback steps and point out any safety gaps.
+            """,
+    };
+
     public static IReadOnlyDictionary<string, AgentDefinition> All { get; } = new Dictionary<string, AgentDefinition>(StringComparer.OrdinalIgnoreCase)
     {
         ["general-purpose"] = GeneralPurpose,
@@ -183,5 +279,10 @@ public static class BuiltInAgents
         ["Coder"] = Coder,
         ["Verify"] = Verify,
         ["Genius"] = Genius,
+        ["Captain"] = Captain,
+        ["Postmaster"] = Postmaster,
+        ["Librarian"] = Librarian,
+        ["Navigator"] = Navigator,
+        ["Auditor"] = Auditor,
     };
 }

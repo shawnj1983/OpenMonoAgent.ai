@@ -41,7 +41,8 @@ public sealed class AgentTool : ToolBase
         .AddString("description", "Short description of the task (3-5 words)")
         .AddString("prompt", "Detailed instructions for the sub-agent")
         .AddEnum("agent_type", "Agent type determines available tools (default: general-purpose)",
-            "general-purpose", "Explore", "Plan", "Coder", "Verify", "Genius")
+            "general-purpose", "Explore", "Plan", "Coder", "Verify", "Genius",
+            "Captain", "Postmaster", "Librarian", "Navigator", "Auditor")
         .Require("description", "prompt");
 
     public IReadOnlyList<Capability> RequiredCapabilities(JsonElement input)
