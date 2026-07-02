@@ -196,8 +196,13 @@ Spawns an isolated session with a restricted tool set and a dedicated system pro
 | `Plan` | 10 | + TodoWrite (no writes) | architecture planning |
 | `Coder` | 30 | FileRead/Write/Edit, Glob, Grep, Bash | implementation |
 | `Verify` | 20 | FileRead, Glob, Grep, Bash, Roslyn, LSP, MCP | adversarial testing |
+| `Genius` | 500 | * (full) | deep autopsy, thick 10x, kill-critic full-context analysis (long-ctx + OS) |
 
 Tool allow-lists support wildcards (`*`, `mcp__*`).
+
+Genius mode (via /genius or --genius) raises iteration cap 10x, preserves full context (skips compaction), forces thinking, and injects special autopsy directives. Pair with OpenSearch MCP for external vector memory.
+
+Durable backends (Dapr/Temporal primary) make Genius/Playbook sub-agents crash-resilient (agents-sdk patterns).
 
 ---
 
@@ -213,6 +218,30 @@ On startup, for each enabled MCP server in config:
 `McpClient` serialises requests, reads responses, and exposes `CallToolAsync`, `ListResourcesAsync`, `ReadResourceAsync`.
 
 **Auto-detected servers**: `code-review-graph` (if in PATH + graph DB exists) and `graphify` (if in PATH + `graphify-out/graph.json` exists) are registered automatically without config.
+
+---
+
+## Captain (local-first “information ship”)
+
+Captain is an *opt-in*, local-only subsystem that watches user-chosen filesystem roots, incrementally indexes file metadata + safe text content, and can auto-organize inbox folders using **move/rename only** (never delete).
+
+### Runtime + state
+
+- **CLI**: `openmono captain <init|start|run|status|stop|scan|query|undo>`
+- **State dir**: `~/.openmono/captain/`
+  - `rules.yml`: allowlisted roots + ignore tokens + organization settings
+  - `queue.jsonl` + `queue.cursor`: durable event queue for filesystem changes
+  - `actions.jsonl`: append-only journal for every move/rename + undo support
+  - `captain.db`: local index (SQLite + FTS5)
+
+Index content sources:
+- Safe text files (`.txt`, `.md`, source code, etc.)
+- PDFs (text layer extraction for receipts/exports; scanned PDFs require OCR)
+
+### Index migrations (“migration-helper discipline”)
+
+- **SQLite schema** is versioned via `meta.schema_version` and upgraded by `CaptainDbMigrator` on startup.
+- **OpenSearch indices** are versioned with suffixes (e.g. `{prefix}_captain_files_v1`). Upgrades should follow an additive + backfill pattern: create the new index, dual-write during transition, then cut reads over (optionally via an alias) once reindex/backfill completes.
 
 ---
 

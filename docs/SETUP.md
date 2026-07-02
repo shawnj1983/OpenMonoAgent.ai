@@ -1,5 +1,7 @@
 # Setup & Commands
 
+> **UI/UX Pro Max edition** — first-run tips, GENIUS visual affordances (purple 10× autopsy), Claude-Code-style 1M context routing on any/free model via OpenRouter or local long-ctx + OpenSearch.
+
 ## Requirements
 
 | | |
@@ -189,8 +191,88 @@ Add error handling to the payment flow
 
 OpenMono navigates your codebase, proposes solutions, and executes changes with full transparency. You stay in control throughout — the agent shows its work at every step and asks before making any major actions, including file reads, edits, and running commands.
 
-> [!TIP]
-> Type `/think` or press `Ctrl+T` to enable step-by-step reasoning mode — best for complex bugs, large refactors, and architecture decisions. Turn it off for simple lookups and quick edits.
+---
+
+## First 60 seconds in the TUI (Pro UX)
+
+When the TUI starts you see:
+
+- **Left/main**: conversation (scroll with PgUp/PgDn)
+- **Right sidebar**: live token counts, tok/s sparkline, active modes, working dir
+- **Bottom**: input box (type or Ctrl+P for command palette)
+- **Status**: heartbeat + usage + cancel hints
+
+**Immediate things to try (first-run tips injected automatically):**
+
+```
+/genius                 # toggle deep full-context autopsy mode (10× iters, skips compaction, "kill the critic")
+/plan                   # enter plan mode (edits become proposals only)
+/think                  # force visible step-by-step reasoning on every turn
+/status                 # shows active modes + more
+/help                   # all slash commands
+```
+
+**Genius Mode visual affordances (TUI painter pass):**
+- 🧠 GENIUS badge in status bar + tab bar
+- Purple/magenta accent throughout (title, input border │, sidebar modes, thinking spinners)
+- Sidebar shows "GENIUS 10× autopsy" + "full-ctx • kill-critic • thick thinking"
+- Thinking stream labels become **Autopsy** (instead of Thinking)
+- First-run tip box auto-appears on brand new sessions highlighting 1M context router patterns + genius
+
+Classic mode (`--classic`) also prints the pro tip line on welcome.
+
+**Pro checklist (first 60s)**
+1. `openmono agent --genius` (or inside: `/genius`)
+2. Ask something big: "Autopsy the hardest architectural decision in this repo and propose a clean refactors"
+3. Watch the 10× thinking stream + full history preserved (no auto-summaries)
+4. Try `/plan` + describe a change — review the diff before approve
+
+---
+
+## 1M Context + "Claude Code on any model (free)" with routers
+
+Claude Code (Anthropic's agent) famously supports 1M token context on certain models. The open-source community built **Claude Code Router (CCR)** so you can run the same Claude Code workflow but **route every request to any backend** (Ollama, OpenRouter free tier, Gemini 1M, DeepSeek, local long-ctx, etc.) and pay near $0 for a huge amount of work.
+
+**OpenMono is the fully local, 100% OSS equivalent** — and you get the same power:
+
+- Point `llm.endpoint` + `llm.model` at **any OpenAI-compatible server** (llama.cpp with ring-flash-attn / long ctx, vLLM, SGLang, Ollama with big models, OpenRouter, LiteLLM proxy, etc.)
+- Set huge `llm.contextSize` (192k–1M+ depending on model/GGUF)
+- Use **OpenSearch** (opensearch-skills) as external vector/BM25/agentic memory so effective context is "unlimited" even when the base model window is smaller
+- `--genius` / `GENIUS` mode = the "thick 10× + kill critic + full autopsy" experience that people love in Claude Code 1M sessions
+
+### Recommended free / cheap 1M-style stacks
+
+| Goal | How with OpenMono |
+|------|-------------------|
+| Free 1M-class coding | Set endpoint to OpenRouter + a free-tier 1M model (e.g. google/gemini-2.5-pro via OpenRouter) or a strong free Llama/Qwen. Rotate keys if you hit rate limits. |
+| Truly unlimited memory | Run OpenSearch + enable in config. Genius mode + mcp__opensearch__ tools give RAG + semantic search over your whole history + codebase. |
+| Local long ctx | llama.cpp server with ring attention / long-context GGUF (Qwen, Command-R, etc.). 128k–1M possible on good hardware. |
+| Hybrid routing feel | Use a LiteLLM or custom proxy in front of OpenMono's endpoint and do your own background/think/longContext routing rules (exactly like CCR). |
+
+Example config for "free 1M via OpenRouter":
+
+```json
+{
+  "llm": {
+    "endpoint": "https://openrouter.ai/api/v1",
+    "model": "google/gemini-2.5-pro-preview",
+    "contextSize": 1000000,
+    "apiKey": "sk-or-..."
+  },
+  "openSearch": { "enabled": true, "url": "http://localhost:9200" }
+}
+```
+
+Then launch:
+
+```bash
+openmono agent --genius
+# inside the TUI the purple GENIUS banner + full-context behavior gives you the Claude-Code 1M "source version" experience on the model of your choice (including completely free ones).
+```
+
+OpenMono already speaks the same tool-calling + markdown streaming loop. Pair it with the OSS stack (ring attn, opensearch-mcp, durable backends) and you have a **free, local-first, 1M-context agent that works on any model**.
+
+See also: README "Fully OSS tools for success", ARCHITECTURE "Genius", and the research notes on long-context attention kernels.
 
 ---
 
@@ -451,6 +533,7 @@ Or set `OPENMONO_VISION_ENABLED=0` to prevent the CLI from sending images withou
 | `/clear` | Clear context and start fresh |
 | `/debug` | Toggle verbose debug output |
 | `/retry` | Resend the last message |
+| `/capture [note]` | Capture current browser tab via MCP into `.captain_captures/` and index it |
 | `/quit` | Exit OpenMono |
 
 ---
@@ -484,3 +567,196 @@ openmono config get llm.endpoint
 ```
 
 → [Full configuration reference](CONFIG.md)
+
+---
+
+## OpenSearch (opensearch-skills)
+
+For genius-mode persistent memory, semantic code search, log analytics, and RCA:
+
+1. Run OpenSearch (e.g. `docker run -p 9200:9200 -p 9600:9600 -e "discovery.type=single-node" opensearchproject/opensearch:latest` or use scripts/start_opensearch.sh from opensearch-agent-skills).
+
+2. Configure:
+   ```
+   export OPENSEARCH_URL=http://localhost:9200
+   # optional:
+   # export OPENSEARCH_USERNAME=admin
+   # export OPENSEARCH_PASSWORD=admin
+   ```
+   Or in `~/.openmono/settings.json`:
+   ```json
+   { "openSearch": { "url": "http://localhost:9200" } }
+   ```
+
+3. The agent auto-registers the `opensearch` MCP server (via `uvx opensearch-mcp-server-py@latest` — install uv if needed).
+
+Use via tools or in genius mode for:
+- Vector + BM25 hybrid memory beyond session files.
+- Codebase semantic search.
+- Log pattern analysis and trace debugging (see log-analytics / trace-analytics in opensearch-skills).
+
+MCP tools appear as `mcp__opensearch__*`.
+
+See opensearch-project/opensearch-mcp-server-py and the attached skill for full usage (launchpad, ops.py, ui).
+
+**With Genius mode** this becomes your "1M+ external brain" — exactly the pattern that makes Claude Code + CCR + Gemini 1M so powerful, but fully local + free.
+
+---
+
+## Captain (always-on “information ship”)
+
+Captain is OpenMono’s local-first ingestion + organization engine:
+
+- Watches configured roots for changes (FileSystemWatcher)
+- Builds a persistent local index (SQLite + FTS) for fast Q&A with citations (safe text files + PDFs)
+- Safely auto-organizes **inbox folders** with **move + rename only** (no deletes)
+- Records every move/rename in an append-only journal and supports undo
+
+PDF notes:
+- Captain extracts the **text layer** from PDFs for search/Q&A (great for receipts and exports).
+- If a PDF is a scanned image (no embedded text), you’ll need OCR to make it searchable.
+
+Quickstart:
+
+```bash
+openmono captain init
+# edit ~/.openmono/captain/rules.yml (roots + inboxRoot + organizedRoot)
+openmono captain start
+
+openmono captain query invoice
+openmono captain undo
+openmono captain stop
+```
+
+If you want a one-off rebuild of the local index:
+
+```bash
+openmono captain scan
+```
+
+---
+
+## Outlook / Microsoft 365 (Graph) via MCP (Postmaster)
+
+To give OpenMono (and Captain’s Postmaster playbooks) Outlook access, run an OSS MCP server for Microsoft Graph.
+
+Recommended: `@softeria/ms-365-mcp-server` (device-code flow, 200+ Graph tools).
+
+1) Create an Azure Entra App Registration (public client / device code).
+
+2) Configure an MCP server named `ms365`:
+
+```jsonc
+{
+  "mcp_servers": {
+    "ms365": {
+      "command": "npx",
+      "args": ["-y", "@softeria/ms-365-mcp-server", "--preset", "mail"],
+      "env": {
+        "MS365_MCP_CLIENT_ID": "YOUR_AZURE_APP_CLIENT_ID",
+        "MS365_MCP_TENANT_ID": "consumers"
+      },
+      "enabled": true
+    }
+  }
+}
+```
+
+Notes:
+- For personal Microsoft accounts, set `MS365_MCP_TENANT_ID=consumers` (device flow + refresh tokens are more reliable than `common`).
+- Start with `--read-only` if you want to disable writes until you trust the workflow.
+
+Once connected, tools show up as `mcp__ms365__*` and can be used by playbooks (see `.openmono/playbooks/`).
+
+Playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/postmaster_outlook
+cp setup/playbooks/postmaster_outlook/PLAYBOOK.md ~/.openmono/playbooks/postmaster_outlook/PLAYBOOK.md
+```
+
+---
+
+## Browser capture via MCP (Navigator)
+
+Recommended cross-platform connector: `chrome-devtools-mcp` (Chrome DevTools Protocol exposed as MCP tools).
+
+1) Start Chrome/Chromium with remote debugging enabled:
+
+```bash
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-mcp
+```
+
+2) Add an MCP server named `chrome-devtools`:
+
+```jsonc
+{
+  "mcp_servers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"],
+      "env": { "CHROME_DEBUGGING_PORT": "9222" },
+      "enabled": true
+    }
+  }
+}
+```
+
+3) In OpenMono, use:
+
+```text
+/capture
+```
+
+This triggers a capture workflow that saves markdown into `.captain_captures/` and indexes it for `openmono captain query`.
+
+---
+
+## Full browser control (agent-mode automation)
+
+If you want OpenMono to **click, type, navigate, and print-to-PDF** like a “computer-use” agent, use the built-in `BrowserControl` tool (Playwright-backed).
+
+What it can do:
+- Connect to your existing Chrome/Edge via remote debugging (CDP)
+- Navigate, click, type, press keys, wait for selectors
+- Extract readable text for indexing
+- Save screenshots and print pages to PDF (inside your working directory)
+
+Safety:
+- Always permission-gated
+- Refuses “submit/pay/checkout” clicks unless you explicitly set `allow_submit=true`
+
+To enable control of your *real* browser session:
+1) Start Chrome/Edge with remote debugging:
+   - Windows: `chrome.exe --remote-debugging-port=9222`
+   - macOS: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222`
+   - Linux: `google-chrome --remote-debugging-port=9222`
+2) In OpenMono, use `BrowserControl`:
+   - `connect_cdp` with `cdp_url=http://localhost:9222`
+   - `list_pages` → `select_page`
+   - `navigate` / `click` / `type` / `pdf`
+
+Playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/navigator_browser_control
+cp setup/playbooks/navigator_browser_control/PLAYBOOK.md ~/.openmono/playbooks/navigator_browser_control/PLAYBOOK.md
+```
+
+Navigator playbook template:
+
+```bash
+mkdir -p ~/.openmono/playbooks/navigator_browser_capture
+cp setup/playbooks/navigator_browser_capture/PLAYBOOK.md ~/.openmono/playbooks/navigator_browser_capture/PLAYBOOK.md
+```
+
+---
+
+## See also (full flow)
+
+- [README quickstart + Genius + OSS stack](../README.md)
+- [CONFIG.md](CONFIG.md) — every knob (including llm.contextSize for 1M models)
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how Genius + sub-agents + durable + MCP + OpenSearch compose
+- `openmono agent --genius` inside any project — the TUI will greet you with purple affordances and first-run tips
+
+Enjoy the thick 10× local agent experience on the model (and price) of your choice.

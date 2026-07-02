@@ -17,6 +17,11 @@ public sealed class StatusCommand : ICommand
         context.Renderer.WriteInfo($"Model: {context.Config.Llm.Model}");
         context.Renderer.WriteInfo($"Endpoint: {context.Config.Llm.Endpoint}");
         context.Renderer.WriteInfo($"Working dir: {context.Config.WorkingDirectory}");
+        var modes = new List<string>();
+        if (session.Meta.GeniusEnabled) modes.Add("GENIUS");
+        if (session.Meta.PlanMode) modes.Add("PLAN");
+        if (session.Meta.ThinkingEnabled) modes.Add("THINK");
+        if (modes.Count > 0) context.Renderer.WriteInfo($"Modes: {string.Join(" + ", modes)}  —  GENIUS = full-ctx 10× autopsy (kill critic, no compaction)");
 
         if (session.Todos.Count > 0)
         {

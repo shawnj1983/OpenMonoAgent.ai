@@ -8,5 +8,6 @@ public sealed class SessionMetadata
     public TokenTracker? TokenTracker { get; set; }
     public bool PlanMode { get; set; }
     public bool ThinkingEnabled { get; set; }
+    public bool GeniusEnabled { get; set; }
     public string? LastPlan { get; set; }
 }

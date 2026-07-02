@@ -1,0 +1,20 @@
+version: 1
+
+# Roots Captain is allowed to scan/watch/move/rename within.
+roots:
+  - "~/Captain/Uber"
+
+# Simple substring ignores (safe-by-default).
+ignore:
+  - "/.git/"
+  - "/node_modules/"
+  - "/bin/"
+  - "/obj/"
+  - "/.openmono/"
+
+# Auto-organization is only triggered for new files arriving under inboxRoot.
+organization:
+  enabled: true
+  inboxRoot: "~/Captain/Uber/Inbox"
+  organizedRoot: "~/Captain/Uber"
+

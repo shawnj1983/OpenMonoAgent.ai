@@ -1,3 +1,4 @@
+using OpenMono.Config;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -15,15 +16,22 @@ public sealed record MemoryEntry
 public sealed class MemoryStore
 {
     private readonly string _memoryDir;
+    private readonly OpenSearchConfig? _openSearch;
     private static readonly IDeserializer YamlDeserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .IgnoreUnmatchedProperties()
         .Build();
 
-    public MemoryStore(string dataDirectory)
+    public MemoryStore(string dataDirectory, OpenSearchConfig? openSearch = null)
     {
         _memoryDir = Path.Combine(dataDirectory, "memory");
         Directory.CreateDirectory(_memoryDir);
+        _openSearch = openSearch;
+        if (_openSearch?.Enabled == true)
+        {
+            // opensearch-skills: vector + keyword memory available via opensearch MCP tools (mcp__opensearch__*)
+            // Agent can use for long-term persistent agentic memory, semantic search over past sessions.
+        }
     }
 
     public string? LoadIndex()

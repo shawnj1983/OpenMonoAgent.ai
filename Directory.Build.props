@@ -7,4 +7,14 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Targeted NuGet audit suppression for the SQLite advisory:
+      Microsoft.Data.Sqlite transitively depends on SQLitePCLRaw.lib.e_sqlite3 2.1.11, which
+      triggers NU1903 under TreatWarningsAsErrors. The advisory currently has no patched
+      lib version, so we suppress this GHSA only (everything else still fails restore).
+    -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
 </Project>

@@ -128,13 +128,21 @@ public sealed class ConversationLoop : IDisposable
     public async Task RunTurnAsync(string userInput, IReadOnlyList<ContentPart>? imageParts, CancellationToken ct)
     {
         _doomLoop.Reset();
+        var sanitized = InputSanitizer.SanitizeUserInput(userInput);
+        var redacted = SecretRedactor.RedactUserText(sanitized, out var changed);
+        if (changed)
+        {
+            _output.WriteWarning(
+                "Detected a secret-like token in your message and redacted it from session history. " +
+                "Do not paste API keys into chat. Use environment variables or settings.json instead.");
+        }
         _session.AddMessage(new Message {
             Role = MessageRole.User,
             Content = imageParts is { Count: > 0 }
-                ? $"[{imageParts.Count} image(s)] {userInput}"
-                : userInput,
+                ? $"[{imageParts.Count} image(s)] {redacted}"
+                : redacted,
             ContentParts = imageParts is { Count: > 0 }
-                ? [new TextPart(userInput), .. imageParts]
+                ? [new TextPart(redacted), .. imageParts]
                 : null
         });
         if (imageParts is { Count: > 0 } && !_config.VisionEnabled)
@@ -169,8 +177,9 @@ public sealed class ConversationLoop : IDisposable
         _output.WriteDebug($"[Turn] #{_session.TurnCount} — {_session.Messages.Count} messages, ~{_session.TotalTokensUsed} tokens used");
 
         var lastPromptTokens = _session.Meta.TokenTracker?.LastPromptTokens ?? 0;
+        bool genius = _session.Meta.GeniusEnabled;
 
-        if (_checkpointer.NeedsCheckpoint(_session, lastPromptTokens))
+        if (!genius && _checkpointer.NeedsCheckpoint(_session, lastPromptTokens))
         {
             _output.WriteInfo("Context window approaching limit. Creating checkpoint...");
             _output.WriteDebug($"[Checkpoint] Triggered — messages={_session.Messages.Count} lastPromptTokens={lastPromptTokens}");
@@ -183,7 +192,7 @@ public sealed class ConversationLoop : IDisposable
             _output.WriteDebug($"[Checkpoint] Done — effective window={_checkpointer.BuildContextWindow(_session).Count} messages");
         }
 
-        else if (_compactor.NeedsCompaction(_checkpointer.BuildContextWindow(_session), lastPromptTokens))
+        else if (!genius && _compactor.NeedsCompaction(_checkpointer.BuildContextWindow(_session), lastPromptTokens))
         {
             await RunCompactionAsync(lastPromptTokens, customInstructions: null, ct);
         }
@@ -193,6 +202,11 @@ public sealed class ConversationLoop : IDisposable
             ? _tools.BuildToolDefinitionsFor(allowedToolNames.Where(n => _tools.Resolve(n)?.IsReadOnly == true))
             : _tools.BuildToolDefinitionsFor(allowedToolNames);
         var thinking = _session.Meta.ThinkingEnabled;
+        if (genius)
+        {
+            thinking = true;
+        }
+
         var options = new LlmOptions
         {
             Model = _config.Llm.Model,
@@ -202,12 +216,17 @@ public sealed class ConversationLoop : IDisposable
             MinP = _config.Llm.MinP,
             RepetitionPenalty = _config.Llm.RepetitionPenalty,
 
-            Temperature = thinking ? 0.6 : _config.Llm.Temperature,
-            PresencePenalty = thinking ? 0.0 : _config.Llm.PresencePenalty,
-            EnableThinking = thinking,
+            Temperature = genius ? 0.8 : (thinking ? 0.6 : _config.Llm.Temperature),
+            PresencePenalty = genius ? 0.0 : (thinking ? 0.0 : _config.Llm.PresencePenalty),
+            EnableThinking = genius || thinking,
         };
 
         var maxIterations = _maxIterations;
+        if (genius)
+        {
+            maxIterations = Math.Max(maxIterations * 10, 10000);
+            _output.WriteInfo("[Genius] Thick 10x autopsy mode engaged — elevated iteration cap, full context preserved.");
+        }
         for (var i = 0; i < maxIterations; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -215,7 +234,7 @@ public sealed class ConversationLoop : IDisposable
             if (i > 0)
             {
                 var iterPromptTokens = _session.Meta.TokenTracker?.LastPromptTokens ?? 0;
-                if (_checkpointer.NeedsCheckpoint(_session, iterPromptTokens))
+                if (!genius && _checkpointer.NeedsCheckpoint(_session, iterPromptTokens))
                 {
                     _output.WriteInfo("Context window approaching limit. Creating checkpoint...");
                     _output.WriteDebug($"[Checkpoint] Triggered mid-turn — messages={_session.Messages.Count}");
@@ -227,7 +246,7 @@ public sealed class ConversationLoop : IDisposable
                     _doomLoop.Reset();
                     i = -1; continue;
                 }
-                else if (_compactor.NeedsCompaction(_checkpointer.BuildContextWindow(_session), iterPromptTokens))
+                else if (!genius && _compactor.NeedsCompaction(_checkpointer.BuildContextWindow(_session), iterPromptTokens))
                 {
                     await RunCompactionAsync(iterPromptTokens, customInstructions: null, ct);
                     _doomLoop.Reset();

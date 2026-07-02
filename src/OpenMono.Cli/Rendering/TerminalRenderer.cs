@@ -94,17 +94,22 @@ public sealed class TerminalRenderer : IRenderer
 
         var grid = new Grid();
         grid.AddColumn(new GridColumn().NoWrap());
-        grid.AddRow($"[bold green]OpenMono.ai[/] [dim]—[/] Local Coding Agent");
-        grid.AddRow($"[dim]Model:[/] [cyan]{Markup.Escape(model)}[/] [dim]|[/] [dim]Endpoint:[/] [cyan]{Markup.Escape(endpoint)}[/]");
-        grid.AddRow("[dim]Type your request, or /help for commands. Ctrl+C to clear · Ctrl+C twice to exit.[/]");
+        grid.AddRow($"[bold #a3ff66]OpenMono.ai[/] [dim]—[/] [bold]Local Coding Agent[/]  [dim](fully open source)[/]");
+        grid.AddRow($"[dim]Model[/]  [cyan]{Markup.Escape(model)}[/]    [dim]Endpoint[/]  [cyan]{Markup.Escape(endpoint)}[/]");
+        grid.AddRow("[dim]Commands: /help  /genius  /plan  /think  /status   •   Ctrl+C clears, double-tap exits[/]");
 
         var panel = new Panel(grid)
         {
             Border = BoxBorder.Rounded,
-            BorderStyle = new Style(Color.Blue),
+            BorderStyle = new Style(Color.FromInt32(0xA3FF66)),
             Padding = new Padding(1, 0),
+            Header = new PanelHeader(" [bold]Ready[/] "),
         };
         _console.Write(panel);
+        _console.WriteLine();
+
+        // First-run tips (classic path)
+        _console.MarkupLine("[#b48cff]✦ Pro tips:[/] [dim]/genius[/] for 10× deep autopsy (Claude-Code 1M-style full ctx on any model). [/] [dim]/plan[/] + [/] [dim]/think[/] for visible reasoning. Use OpenRouter free 1M models by pointing endpoint + large contextSize.[/]");
         _console.WriteLine();
     }
 

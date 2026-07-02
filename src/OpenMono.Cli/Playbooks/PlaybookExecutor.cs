@@ -73,6 +73,8 @@ public sealed class PlaybookExecutor : IDisposable
         };
 
         _renderer.WriteInfo($"Playbook: {playbook.Name} v{playbook.Version}");
+        if (_config.DurableAgents.Enabled)
+            _renderer.WriteInfo($"[Durable] Playbook steps backed by {_config.DurableAgents.Backend} (agents-sdk style durable workflows).");
 
         var steps = ResolveStepOrder(playbook.Steps);
         var finalOutput = new StringBuilder();

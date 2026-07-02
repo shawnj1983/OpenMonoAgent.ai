@@ -127,6 +127,11 @@ services:
     tty: true
     working_dir: /workspace
 
+# opensearch-skills (optional external for vector memory, semantic code search, log analytics, RCA)
+# Start separately or via: docker run -p 9200:9200 -p 9600:9600 opensearchproject/opensearch:latest
+# Then configure OPENMONO_OPENSEARCH_URL=http://host:9200 and MCP will expose tools.
+# See attached opensearch-skills for full launchpad / log / trace usage.
+
 networks:
   default:
     name: openmono-network

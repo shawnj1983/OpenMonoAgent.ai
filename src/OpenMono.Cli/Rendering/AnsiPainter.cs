@@ -24,6 +24,9 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
     internal const string Fw   = "\x1b[37m";
     internal const string Fk   = "\x1b[90m";
     internal const string Fbb  = "\x1b[38;2;163;255;102m";
+    // Genius mode accent (deep purple/magenta for "autopsy / 10x thick thinking")
+    internal const string Fm   = "\x1b[38;2;180;140;255m";
+    internal const string Fmg  = "\x1b[38;2;200;120;255m";
     internal const string BgMain   = "\x1b[40m";
     internal const string BgInput  = "\x1b[40m";
     internal const string BgStatus = "\x1b[40m";
@@ -118,6 +121,9 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
     private int _cachedWidth;
     private int _trimmedLineCount;
 
+    private bool IsGenius => session?.Meta?.GeniusEnabled == true;
+
+    private bool _firstRunTipsInjected;
     private long _lastPaintTick;
     private long _lastTokenPaintTick;
 
@@ -628,6 +634,8 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
         var stream = _thinkingStreams.GetOrAdd(key, _ => new ThinkingStream());
         lock (stream.BufferLock) { stream.Buffer.Append(text); }
         stream.Mode = "Thinking";
+        if (IsGenius && string.IsNullOrEmpty(stream.WaitingLabel) || stream.WaitingLabel == "Thinking")
+            stream.WaitingLabel = "Autopsy";
         stream.Collapsed = false;
         System.Threading.Interlocked.Exchange(ref stream.LastActivityTick, DateTime.UtcNow.Ticks);
         EnsureThinkingTimer();
@@ -970,6 +978,7 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
     {
         try
         {
+            EnsureFirstRunTips();
             InvalidateFrameBuffer();
             Sz();
             _paintInProgress = true;
@@ -1006,6 +1015,7 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
 
     private void DoPaintConvDirect()
     {
+        EnsureFirstRunTips();
         Sz();
         _paintInProgress = true;
         var sb = new StringBuilder(4096);
@@ -1220,16 +1230,19 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
                     var approxTok = stream.CollapseChars / 4;
                     var tok = approxTok > 0 ? $" [{approxTok} tok]" : "";
                     if (firstBlock) { lines.Add(""); firstBlock = false; }
-                    lines.Add($"  {Fk}◈ {prefix}Thinking{tok}{R}");
+                    var collapsedLabel = IsGenius ? "Autopsy" : "Thinking";
+                    lines.Add($"  {Fk}◈ {prefix}{collapsedLabel}{tok}{R}");
                     continue;
                 }
                 if (stream.Mode.Length == 0) continue;
                 var frame   = System.Threading.Volatile.Read(ref stream.Frame);
                 var spinner = SpinnerFrames[frame % SpinnerFrames.Length];
                 var dots    = DotsFrames[frame % DotsFrames.Length];
-                var label   = stream.Mode == "Waiting" ? stream.WaitingLabel : "Thinking";
+                var baseLabel = stream.Mode == "Waiting" ? stream.WaitingLabel : (IsGenius ? "Autopsy" : "Thinking");
+                var label   = IsGenius ? $"{Fm}{baseLabel}{R}{Fk}" : baseLabel;
                 if (firstBlock) { lines.Add(""); firstBlock = false; }
-                lines.Add($"  {Fbb}{spinner} {IT}{Fk}{prefix}{label}{dots}");
+                var thinkColor = IsGenius ? Fmg : Fbb;
+                lines.Add($"  {thinkColor}{spinner} {IT}{Fk}{prefix}{label}{dots}");
                 string snapshot;
                 lock (stream.BufferLock) { snapshot = stream.Buffer.ToString(); }
                 if (snapshot.Length > 0)
@@ -1313,7 +1326,8 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
             sb.Append($"{E}[{startRow + r + 2};1H");
             var lineText = wrapped.Length > r ? wrapped[r] : "";
             var isIndicatorLine = lineText.EndsWith("Copied]");
-            sb.Append($"{BgInput}{Fbb}│{R}{BgInput} ");
+            var border = IsGenius ? $"{Fm}│{R}{BgInput}" : $"{Fbb}│{R}{BgInput}";
+            sb.Append($"{BgInput}{border} ");
             sb.Append(isIndicatorLine ? $"{Fk}{IT}{lineText}" : $"{Fw}{lineText}");
             sb.Append(new string(' ', Math.Max(0, wrapW - lineText.Length)));
             sb.Append(R);
@@ -1327,8 +1341,10 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
         sb.Append($"{E}[{row + 1};1H{BgStatus}");
         var model = config.Llm.Model;
         if (model.Length > 50) model = model[..49] + "…";
-        sb.Append($" {Fbb}{B}Build{R}{BgStatus}  {B}{Fw}{model}{R}{BgStatus}");
-        sb.Append(new string(' ', Math.Max(0, w - 8 - model.Length)));
+        var modeBadge = IsGenius ? $"{Fm}{B}GENIUS{R}{BgStatus}{Fm} " : "";
+        sb.Append($" {modeBadge}{Fbb}{B}Build{R}{BgStatus}  {B}{Fw}{model}{R}{BgStatus}");
+        var prefixLen = (IsGenius ? 8 : 0) + 8;
+        sb.Append(new string(' ', Math.Max(0, w - prefixLen - model.Length)));
         sb.Append(R);
     }
 
@@ -1339,7 +1355,9 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
         var lines = new List<string>(20);
 
         var lastUserText = GetLastUserText();
-        lines.Add($"{B}{Fw}{(!string.IsNullOrEmpty(lastUserText) ? Trunc(lastUserText, _sideW - 2) : "New session")}{R}");
+        var sessionTitle = !string.IsNullOrEmpty(lastUserText) ? Trunc(lastUserText, _sideW - 2) : "New session";
+        if (IsGenius) sessionTitle = $"{Fm}🧠 {R}{B}{Fw}{sessionTitle}{R}";
+        lines.Add($"{B}{Fw}{sessionTitle}{R}");
         lines.Add("");
 
         var tracker    = session.Meta.TokenTracker;
@@ -1380,6 +1398,27 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
         lines.Add("");
         lines.Add($"{Fk}{TruncPath(config.WorkingDirectory, _sideW - 2)}{R}");
         lines.Add("");
+
+        // Modes — first-class visual affordances (especially GENIUS)
+        var meta = session?.Meta;
+        var modes = new List<string>();
+        if (meta?.PlanMode == true) modes.Add($"{Fy}PLAN{R}");
+        if (meta?.ThinkingEnabled == true) modes.Add($"{Fc}THINK{R}");
+        if (IsGenius) modes.Add($"{B}{Fm}GENIUS{R}{Fm} 10× autopsy{R}");
+        if (modes.Count > 0)
+        {
+            lines.Add($"{B}Modes{R}");
+            lines.Add(string.Join("  ", modes));
+            if (IsGenius) lines.Add($"{Fm}full-ctx • kill-critic • thick thinking{R}");
+            lines.Add("");
+        }
+        else if (IsGenius)
+        {
+            lines.Add($"{B}{Fm}GENIUS MODE{R}");
+            lines.Add($"{Fm}10× iterations • no compaction • full autopsy{R}");
+            lines.Add("");
+        }
+
         lines.Add($"{Fg}● {B}OpenMono{R} {Fk}local{R}");
 
         var sideH = _th - 1;
@@ -1427,10 +1466,11 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
             : "";
 
         string left;
+        var geniusBadge = IsGenius ? $"  {B}{Fm}🧠 GENIUS{R}{BgStatus}{Fm} autopsy 10×{R}{BgStatus}" : "";
         if (_streaming && _lastTokSec > 0)
-            left = $" {Fc}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}  {Fg}●{R}{BgStatus} {Fw}{_lastTokSec:F1} tok/s{R}{BgStatus}";
+            left = $" {Fc}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}{geniusBadge}  {Fg}●{R}{BgStatus} {Fw}{_lastTokSec:F1} tok/s{R}{BgStatus}";
         else
-            left = $" {Fg}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}";
+            left = $" {Fg}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}{geniusBadge}";
 
         sb.Append(left);
         var visL = VisLen(left);
@@ -1539,6 +1579,29 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
     }
 
     private static string FmtTok(int t) => t >= 1000 ? $"{t / 1000.0:F1}K" : t.ToString();
+
+    private void EnsureFirstRunTips()
+    {
+        if (_firstRunTipsInjected) return;
+        lock (_messagesLock)
+        {
+            var hasUser = _messages.Any(m => m.Role == "user");
+            if (hasUser) { _firstRunTipsInjected = true; return; }
+        }
+
+        var tips = new StringBuilder();
+        tips.AppendLine($"{Fm}✦ First-run pro tips{R}");
+        tips.AppendLine($"{Fk}• Press {Fw}/genius{R}{Fk} or start with {Fw}openmono agent --genius{R}{Fk} for deep full-context autopsy (10× iterations, no compaction).{R}");
+        tips.AppendLine($"{Fk}• {Fw}/plan{R}{Fk} + {Fw}/think{R}{Fk} for step-by-step planning and visible reasoning.{R}");
+        tips.AppendLine($"{Fk}• Use large-context models (or OpenRouter free 1M models via endpoint) + OpenSearch for true 1M-token agent memory like Claude Code on any model.{R}");
+        tips.AppendLine($"{Fk}• {Fw}PgUp/PgDn{R}{Fk} scroll • {Fw}Ctrl+P{R}{Fk} command palette • type {Fw}/help{R}{Fk} anytime.{R}");
+        if (IsGenius)
+        {
+            tips.AppendLine($"{Fm}GENIUS MODE ACTIVE — thick 10× thinking, kill the critic, full autopsy enabled.{R}");
+        }
+        AddMessage(new Msg("sys", tips.ToString().TrimEnd()));
+        _firstRunTipsInjected = true;
+    }
 
     private static string TruncPath(string p, int n)
     {

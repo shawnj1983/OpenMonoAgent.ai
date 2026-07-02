@@ -23,6 +23,12 @@ public static class ConfigLoader
             RepetitionPenalty = 1.0,
         };
 
+        // DataDirectory is needed before we can read the user settings file.
+        // Apply this env override early; all other env overrides still apply later.
+        var dataDir = Environment.GetEnvironmentVariable("OPENMONO_DATA_DIR");
+        if (!string.IsNullOrEmpty(dataDir))
+            config.DataDirectory = dataDir;
+
         var userConfigPath = Path.Combine(config.DataDirectory, "settings.json");
         MergeFromFile(config, userConfigPath, warn);
 
@@ -151,6 +157,16 @@ public static class ConfigLoader
 
             if (overrides.AutoDetectCodeGraph)
                 config.AutoDetectCodeGraph = true;
+
+            // OpenSearch (opensearch-skills): prefer explicit, allow override from json
+            if (overrides.OpenSearch?.Enabled == true)
+            {
+                if (string.IsNullOrWhiteSpace(config.OpenSearch.Url))
+                    config.OpenSearch = overrides.OpenSearch;
+            }
+
+            if (overrides.DurableAgents is not null && !string.IsNullOrWhiteSpace(overrides.DurableAgents.Backend))
+                config.DurableAgents = overrides.DurableAgents;
         }
         catch (JsonException ex)
         {
@@ -249,5 +265,26 @@ public static class ConfigLoader
             foreach (var p in config.Providers.Values) p.Active = false;
             ps.Active = true;
         }
+
+        // OpenSearch (for opensearch-skills integration)
+        var osUrl = Environment.GetEnvironmentVariable("OPENMONO_OPENSEARCH_URL") ?? Environment.GetEnvironmentVariable("OPENSEARCH_URL");
+        if (!string.IsNullOrEmpty(osUrl))
+            config.OpenSearch.Url = osUrl;
+
+        var osUser = Environment.GetEnvironmentVariable("OPENMONO_OPENSEARCH_USERNAME") ?? Environment.GetEnvironmentVariable("OPENSEARCH_USERNAME");
+        if (!string.IsNullOrEmpty(osUser))
+            config.OpenSearch.Username = osUser;
+
+        var osPass = Environment.GetEnvironmentVariable("OPENMONO_OPENSEARCH_PASSWORD") ?? Environment.GetEnvironmentVariable("OPENSEARCH_PASSWORD");
+        if (!string.IsNullOrEmpty(osPass))
+            config.OpenSearch.Password = osPass;
+
+        var durableBackend = Environment.GetEnvironmentVariable("OPENMONO_DURABLE_BACKEND");
+        if (!string.IsNullOrEmpty(durableBackend))
+            config.DurableAgents.Backend = durableBackend;
+
+        var durableEp = Environment.GetEnvironmentVariable("OPENMONO_DURABLE_ENDPOINT");
+        if (!string.IsNullOrEmpty(durableEp))
+            config.DurableAgents.Endpoint = durableEp;
     }
 }

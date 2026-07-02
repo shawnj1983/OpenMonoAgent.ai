@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenMono.Acp;
+using OpenMono.Captain;
 using OpenMono.Commands;
 using OpenMono.Config;
 using OpenMono.History;
@@ -23,6 +24,41 @@ bool? useTui = null;
 var noAcp = false;
 int? acpPort = null;
 var acpOnly = false;
+var genius = false;
+
+// Top-level subcommands (run outside the interactive agent loop).
+// The bash wrapper uses these (e.g. `openmono captain start`).
+if (args.Length > 0 && args[0].Equals("captain", StringComparison.OrdinalIgnoreCase))
+{
+    var renderer = new TerminalRenderer();
+    var config = ConfigLoader.Load(workdir, configPath, warn: msg => renderer.WriteWarning(msg));
+    if (verbose) config.Verbose = true;
+    renderer.Verbose = config.Verbose;
+
+    using var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
+    var captainArgs = args.Skip(1).ToArray();
+    var exit = await CaptainCli.RunAsync(captainArgs, config, renderer, cts.Token);
+    return exit;
+}
+
+if (args.Length > 0 && args[0].Equals("acp", StringComparison.OrdinalIgnoreCase))
+{
+    using var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
+    var acpArgs = args.Skip(1).ToArray();
+    return await AcpCli.RunAsync(acpArgs, cts.Token);
+}
 
 // Env-var fallback for --acp-only (set by the VS Code extension for headless
 // detached containers). The OPENMONO_ACP_ENABLED counterpart is consumed
@@ -46,6 +82,7 @@ for (var i = 0; i < args.Length; i++)
         case "--tui": useTui = true; break;
         case "--classic": useTui = false; break;
         case "--no-acp": noAcp = true; break;
+        case "--genius": genius = true; break;
         case "--acp-port" when next is not null && int.TryParse(next, out var p): acpPort = p; i++; break;
         case "--acp-only":
         {
@@ -73,6 +110,7 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine("  --acp-only [bool]  Run the ACP server only — no TUI. Bare or `--acp-only true` forces");
             Console.WriteLine("                     it on (container default); `--acp-only false` runs the interactive TUI.");
             Console.WriteLine("                     Without the flag, ACP stays off unless acpServer.enabled = true in config.");
+            Console.WriteLine("  --genius           Start in genius mode (deep full-context autopsy, 10x thinking, kill critic).");
             Console.WriteLine("  --help, -h         Show this help message");
             Console.WriteLine("  --version          Show version");
             Console.WriteLine();
@@ -87,6 +125,8 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine("  /undo [n]          Revert last n file modification(s)");
             Console.WriteLine("  /checkpoint        Checkpoint conversation to free context");
             Console.WriteLine("  /think             Toggle step-by-step reasoning mode");
+            Console.WriteLine("  /genius            Toggle genius mode (deep autopsy, thick 10x, kill critic)");
+            Console.WriteLine("  /capture           Capture current browser tab via MCP into markdown for Captain");
             Console.WriteLine("  /init              Auto-generate OPENMONO.md from project");
             Console.WriteLine("  /resume [id]       Restore a previous session");
             Console.WriteLine("  /export            Export conversation (markdown/json/html)");
@@ -108,13 +148,13 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 
-await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui, noAcp, acpPort, acpOnly);
+await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui, noAcp, acpPort, acpOnly, genius);
 return 0;
 
 static bool EnvFlag_Truthy(string? v) =>
     v is not null && (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
 
-static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null, bool noAcp = false, int? acpPort = null, bool acpOnly = false)
+static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null, bool noAcp = false, int? acpPort = null, bool acpOnly = false, bool genius = false)
 {
 
     IRenderer renderer = new TerminalRenderer();
@@ -133,7 +173,15 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     var sessionManager = new SessionManager(config);
     var session = SessionManager.CreateSession();
 
-
+    if (genius)
+    {
+        session.Meta.GeniusEnabled = true;
+        session.AddMessage(new Message
+        {
+            Role = MessageRole.User,
+            Content = GeniusModeInstructions.Activation("activated via --genius"),
+        });
+    }
 
     var enableTui = !acpOnly && (useTui ?? (!Console.IsInputRedirected && !Console.IsOutputRedirected));
     AnsiTuiRenderer? ansiTui = null;
@@ -146,7 +194,7 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     }
 
     var permissions = new PermissionEngine(config, renderer, renderer);
-    var memoryStore = new MemoryStore(config.DataDirectory);
+    var memoryStore = new MemoryStore(config.DataDirectory, config.OpenSearch);
     var hookRunner = new HookRunner(config, warn: msg => renderer.WriteWarning(msg));
 
     var providerRegistry = new ProviderRegistry();
@@ -175,6 +223,10 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     tools.Register(new GlobTool());
     tools.Register(new GrepTool());
     tools.Register(new BashTool());
+    tools.Register(new CaptainFileOpsTool());
+    tools.Register(new CaptainSearchTool());
+    tools.Register(new BrowserControlTool());
+    tools.Register(new MacAutomationTool());
     tools.Register(new AgentTool());
     tools.Register(new TodoTool());
     tools.Register(new AskUserTool());
@@ -209,6 +261,51 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
 
     var systemPrompt = await BuildSystemPrompt(config, memoryStore, playbookRegistry);
     session.AddMessage(new Message { Role = MessageRole.System, Content = systemPrompt });
+
+    // opensearch-skills integration: auto-register opensearch-mcp if configured
+    if (config.OpenSearch.Enabled && !config.McpServers.ContainsKey("opensearch"))
+    {
+        var osEnv = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(config.OpenSearch.Url)) osEnv["OPENSEARCH_URL"] = config.OpenSearch.Url!;
+        if (!string.IsNullOrWhiteSpace(config.OpenSearch.Username)) osEnv["OPENSEARCH_USERNAME"] = config.OpenSearch.Username!;
+        if (!string.IsNullOrWhiteSpace(config.OpenSearch.Password)) osEnv["OPENSEARCH_PASSWORD"] = config.OpenSearch.Password!;
+        config.McpServers["opensearch"] = new McpServerSettings
+        {
+            Command = "uvx",
+            Args = new[] { "opensearch-mcp-server-py@latest" },
+            Env = osEnv.Count > 0 ? osEnv : null,
+            Enabled = true,
+        };
+        renderer.WriteInfo("OpenSearch (opensearch-skills) detected — registered 'opensearch' MCP server for agent tools/memory/search.");
+    }
+
+    // Outlook / Microsoft 365 (Graph) integration: auto-register a ms365 MCP server if env is present.
+    if (!config.McpServers.ContainsKey("ms365"))
+    {
+        var clientId = Environment.GetEnvironmentVariable("MS365_MCP_CLIENT_ID");
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            var msEnv = new Dictionary<string, string>
+            {
+                ["MS365_MCP_CLIENT_ID"] = clientId!,
+                ["MS365_MCP_TENANT_ID"] = Environment.GetEnvironmentVariable("MS365_MCP_TENANT_ID") ?? "consumers",
+            };
+
+            var secret = Environment.GetEnvironmentVariable("MS365_MCP_CLIENT_SECRET");
+            if (!string.IsNullOrWhiteSpace(secret))
+                msEnv["MS365_MCP_CLIENT_SECRET"] = secret!;
+
+            config.McpServers["ms365"] = new McpServerSettings
+            {
+                Command = "npx",
+                Args = new[] { "-y", "@softeria/ms-365-mcp-server", "--preset", "mail" },
+                Env = msEnv,
+                Enabled = true,
+            };
+
+            renderer.WriteInfo("MS365 (Outlook) detected — registered 'ms365' MCP server (Microsoft Graph mail preset).");
+        }
+    }
 
     using var mcpManager = new McpServerManager(msg => renderer.WriteInfo(msg));
     var mcpConfigs = config.McpServers.Select(kv => new McpServerConfig
@@ -358,14 +455,17 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     commands.Register(new CheckpointCommand(checkpointer));
     commands.Register(new ThinkCommand());
     commands.Register(new PlanCommand());
+    commands.Register(new GeniusCommand());
 
     var compactor = new Compactor(llm, config.Llm.ContextSize);
+    var effectiveMaxIters = genius ? 10000 : 1000; // genius: thick 10x (or more) iterations for deep analysis
     var loop = new ConversationLoop(llm, tools, permissions, renderer, renderer, renderer, config, session, compactor, memoryStore,
-        checkpointer: checkpointer);
+        checkpointer: checkpointer, maxIterations: effectiveMaxIters);
 
     commands.Register(new RetryCommand(loop));
     commands.Register(new CompactCommand(compactor));
     commands.Register(new ModelCommand());
+    commands.Register(new CaptureCommand(loop));
 
     renderer.EnableCommandSuggestions(commands);
 

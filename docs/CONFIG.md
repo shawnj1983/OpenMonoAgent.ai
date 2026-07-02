@@ -16,7 +16,8 @@ Commands are grouped by which box they run on.
 
 | Command | Description |
 |---------|-------------|
-| `openmono agent` | Run the coding agent in the current directory |
+| `openmono agent [--genius]` | Run the coding agent (use --genius for deep autopsy mode) |
+| `openmono captain <init\|start\|run\|status\|stop\|scan\|query\|undo>` | Run the Captain (always-on file/email/browser ingestion + safe move/rename + Q&A) |
 | `openmono graph [path]` | Build the code-review-graph index for a project |
 | `openmono graphify [path]` | Build the Graphify knowledge graph for a project |
 
@@ -160,6 +161,23 @@ By default these write to the project-level `.openmono/settings.json`. Pass `--g
       "command": "npx",
       "args": ["-y", "@my-org/mcp-server"],
       "env": { "MY_KEY": "value" },
+      "enabled": true
+    },
+    "ms365": {
+      "command": "npx",
+      "args": ["-y", "@softeria/ms-365-mcp-server", "--preset", "mail"],
+      "env": {
+        "MS365_MCP_CLIENT_ID": "YOUR_AZURE_APP_CLIENT_ID",
+        "MS365_MCP_TENANT_ID": "consumers"
+      },
+      "enabled": true
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"],
+      "env": {
+        "CHROME_DEBUGGING_PORT": "9222"
+      },
       "enabled": true
     }
   },
