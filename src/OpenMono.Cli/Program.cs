@@ -47,6 +47,19 @@ if (args.Length > 0 && args[0].Equals("captain", StringComparison.OrdinalIgnoreC
     return exit;
 }
 
+if (args.Length > 0 && args[0].Equals("acp", StringComparison.OrdinalIgnoreCase))
+{
+    using var cts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
+    var acpArgs = args.Skip(1).ToArray();
+    return await AcpCli.RunAsync(acpArgs, cts.Token);
+}
+
 // Env-var fallback for --acp-only (set by the VS Code extension for headless
 // detached containers). The OPENMONO_ACP_ENABLED counterpart is consumed
 // inside RunAgentAsync where AcpServerSettings.Enabled lives.
@@ -213,6 +226,7 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
     tools.Register(new CaptainFileOpsTool());
     tools.Register(new CaptainSearchTool());
     tools.Register(new BrowserControlTool());
+    tools.Register(new MacAutomationTool());
     tools.Register(new AgentTool());
     tools.Register(new TodoTool());
     tools.Register(new AskUserTool());
