@@ -45,3 +45,13 @@ Examples the agent can perform (when allowed):
 
 Captain file operations remain restricted to `~/.openmono/captain/rules.yml` roots, and never delete files (only move/rename).
 
+### API keys (do not paste into chat)
+
+Do not paste API keys into OpenMono chat. Set them as environment variables instead:
+
+- `OPENAI_API_KEY` for OpenAI (used by the `openai` provider).
+- `ANTHROPIC_API_KEY` for Anthropic.
+- `OPENMONO_API_KEY` for OpenMono’s OpenAI-compatible client config.
+
+OpenMono redacts secret-like tokens from session history, but you should still rotate keys if you accidentally disclose them.
+

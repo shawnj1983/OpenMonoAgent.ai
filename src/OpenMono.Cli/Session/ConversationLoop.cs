@@ -128,13 +128,21 @@ public sealed class ConversationLoop : IDisposable
     public async Task RunTurnAsync(string userInput, IReadOnlyList<ContentPart>? imageParts, CancellationToken ct)
     {
         _doomLoop.Reset();
+        var sanitized = InputSanitizer.SanitizeUserInput(userInput);
+        var redacted = SecretRedactor.RedactUserText(sanitized, out var changed);
+        if (changed)
+        {
+            _output.WriteWarning(
+                "Detected a secret-like token in your message and redacted it from session history. " +
+                "Do not paste API keys into chat. Use environment variables or settings.json instead.");
+        }
         _session.AddMessage(new Message {
             Role = MessageRole.User,
             Content = imageParts is { Count: > 0 }
-                ? $"[{imageParts.Count} image(s)] {userInput}"
-                : userInput,
+                ? $"[{imageParts.Count} image(s)] {redacted}"
+                : redacted,
             ContentParts = imageParts is { Count: > 0 }
-                ? [new TextPart(userInput), .. imageParts]
+                ? [new TextPart(redacted), .. imageParts]
                 : null
         });
         if (imageParts is { Count: > 0 } && !_config.VisionEnabled)
