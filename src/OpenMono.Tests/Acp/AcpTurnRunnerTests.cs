@@ -456,6 +456,82 @@ public sealed class AcpTurnRunnerTests
     }
 
     [Fact]
+    public async Task ResumeWithPermissionAsync_after_compaction_still_executes_the_real_tool()
+    {
+        var tools = new ToolRegistry();
+        tools.Register(new AskingTool());
+
+        static List<StreamChunk> TextRound(string text) =>
+        [
+            new() { TextDelta = text, IsComplete = false },
+            new() { IsComplete = true, Usage = new UsageInfo() },
+        ];
+
+        var (runner, session, _) = BuildHarness(
+            tools: tools,
+            llmRounds: new List<List<StreamChunk>>
+            {
+                // Fake LLM rounds are consumed in call order, not matched to message content —
+                // the tool-call round must be third to line up with the "delete it" turn below.
+                TextRound("chat reply 1"),
+                TextRound("chat reply 2"),
+                new()
+                {
+                    new() { ToolCallDelta = new ToolCall { Id = "call_p", Name = "AskingTool", Arguments = "{}" }, IsComplete = false },
+                    new() { IsComplete = true },
+                },
+                TextRound("ok 1"), TextRound("ok 2"), TextRound("ok 3"), TextRound("ok 4"), TextRound("ok 5"),
+            });
+
+        // Two ordinary turns of chat, then the risky call that pauses for a permission decision.
+        await runner.RunUserMessageAsync("chat 1", CancellationToken.None);
+        await runner.RunUserMessageAsync("chat 2", CancellationToken.None);
+        await runner.RunUserMessageAsync("delete it", CancellationToken.None);
+        var pauseId = session.PendingIds.Single();
+
+        // Five more turns pass before the user gets back to that permission prompt — the ACP
+        // layer explicitly supports outstanding/queued permissions, so this is a real scenario.
+        for (var i = 0; i < 5; i++)
+            await runner.RunUserMessageAsync($"meanwhile {i}", CancellationToken.None);
+
+        // A long-running session eventually compacts. Simulate that happening while the
+        // permission is still outstanding, using the exact same Compactor the real loop
+        // constructs internally (same class, same defaults — just invoked directly here so
+        // the test doesn't have to fight token-threshold timing).
+        var compactor = new Compactor(new CompactionSummaryLlm(), contextSize: 100_000);
+        var (compacted, report) = await compactor.CompactAsync(session.State);
+        report.MessagesCompressed.Should().BeGreaterThan(0, "the two 'chat' turns should have actually been summarized");
+        session.State.Messages.Clear();
+        foreach (var msg in compacted.Messages)
+            session.State.AddMessage(msg);
+
+        // Finally resolve the permission that's been pending this whole time.
+        using var payload = JsonDocument.Parse($"{{\"id\":\"{pauseId}\",\"decision\":\"allow\"}}");
+        await runner.ResumeWithPermissionAsync(payload.RootElement, CancellationToken.None);
+
+        var toolMsg = session.Messages.LastOrDefault(m => m.Role == MessageRole.Tool && m.ToolCallId == "call_p");
+        toolMsg.Should().NotBeNull(
+            "the approved tool must still run even though compaction happened while the permission " +
+            "was outstanding — before the fix this was silently dropped (ResolvePendingToolCallsAsync " +
+            "found no matching assistant tool call and just returned)");
+        toolMsg!.Content.Should().Be("done");
+        toolMsg.IsError.Should().BeFalse();
+    }
+
+    private sealed class CompactionSummaryLlm : ILlmClient
+    {
+        public async IAsyncEnumerable<StreamChunk> StreamChatAsync(
+            IReadOnlyList<Message> messages, JsonElement? toolDefs, LlmOptions options,
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            yield return new StreamChunk { TextDelta = "summary of old turns", IsComplete = true };
+            await Task.CompletedTask;
+        }
+
+        public void Dispose() { }
+    }
+
+    [Fact]
     public void AcpSession_PermissionQueue_serializes_concurrent_permissions()
     {
         var session = NewSession();

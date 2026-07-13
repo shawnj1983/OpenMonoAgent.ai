@@ -738,11 +738,34 @@ public sealed class ConversationLoop : IDisposable
     private async Task RunCompactionAsync(int promptTokens, string? customInstructions, CancellationToken ct)
     {
         _output.WriteDebug($"[Compact] Triggered — messages={_session.Messages.Count} lastPromptTokens={promptTokens}");
-        var (compacted, report) = await _compactor.CompactAsync(_session, customInstructions, ct);
+        _session.Meta.IsCompacting = true;
+        _output.ShowWaitingIndicator("Compacting");
+        CompactionReport report;
+        try
+        {
+            SessionState compacted;
+            (compacted, report) = await _compactor.CompactAsync(_session, customInstructions, ct);
 
-        _session.Messages.Clear();
-        foreach (var msg in compacted.Messages)
-            _session.AddMessage(msg);
+            _session.Messages.Clear();
+            foreach (var msg in compacted.Messages)
+                _session.AddMessage(msg);
+
+            // Compaction re-summarises full raw history, so any prior checkpoint (which pointed
+            // at an index into the now-discarded message list) is stale — drop it, or
+            // BuildContextWindow would splice a checkpoint bubble that no longer lines up.
+            _session.Checkpoints.Clear();
+            _session.CheckpointCutoffIndex = 0;
+        }
+        finally
+        {
+            _session.Meta.IsCompacting = false;
+            _output.ClearWaitingIndicator();
+        }
+
+        // Reflect the new (smaller) occupancy immediately, rather than leaving the pre-compaction
+        // number on screen until the next real LLM response reports usage.
+        _session.Meta.TokenTracker?.SetEstimatedPromptTokens(report.TokensAfter);
+        await EmitUsageAsync();
 
         report.RenderTo(_output.WriteInfo, promptTokens);
         _output.WriteDebug($"[Compact] Done — {_session.Messages.Count} messages remaining");

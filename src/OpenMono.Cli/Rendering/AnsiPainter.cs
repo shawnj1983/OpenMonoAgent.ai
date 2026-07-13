@@ -1410,7 +1410,14 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
             _heartbeatFrame = (_heartbeatFrame + 1) % HeartbeatFrames.Length;
             _lastHeartbeatTick = now;
         }
-        var pulse = HeartbeatFrames[_heartbeatFrame];
+        var isCompacting = session.Meta.IsCompacting;
+        // Distinct glyph + color while compacting so the ring reads as "actively recalculating",
+        // not just the normal idle pulse — the (pct%) next to it is stale until compaction finishes.
+        var pulse = isCompacting
+            ? SpinnerFrames[_heartbeatFrame % SpinnerFrames.Length]
+            : HeartbeatFrames[_heartbeatFrame];
+        var pulseColor = isCompacting ? Fy : (_streaming && _lastTokSec > 0 ? Fc : Fg);
+        var compactingTag = isCompacting ? $"{Fy} compacting…{R}{BgStatus}" : "";
 
         var tokStr = FmtTok(tok);
         var wMax   = Volatile.Read(ref _windowMax);
@@ -1421,9 +1428,9 @@ internal sealed partial class AnsiPainter(AppConfig config, SessionState session
 
         string left;
         if (_streaming && _lastTokSec > 0)
-            left = $" {Fc}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}  {Fg}●{R}{BgStatus} {Fw}{_lastTokSec:F1} tok/s{R}{BgStatus}";
+            left = $" {pulseColor}{pulse}{R}{BgStatus} {tokStr} ({pct}%){compactingTag}{maxAvgStr}  {Fg}●{R}{BgStatus} {Fw}{_lastTokSec:F1} tok/s{R}{BgStatus}";
         else
-            left = $" {Fg}{pulse}{R}{BgStatus} {tokStr} ({pct}%){maxAvgStr}";
+            left = $" {pulseColor}{pulse}{R}{BgStatus} {tokStr} ({pct}%){compactingTag}{maxAvgStr}";
 
         sb.Append(left);
         var visL = VisLen(left);
