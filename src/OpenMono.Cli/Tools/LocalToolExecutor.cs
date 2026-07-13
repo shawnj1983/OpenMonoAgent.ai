@@ -21,6 +21,7 @@ public sealed class LocalToolExecutor : IToolExecutor
     private readonly ArtifactStore _artifactStore;
     private readonly HookRunner _hookRunner;
     private readonly IAcpEventSink? _sink;
+    private int _activeToolCount;
 
     public LocalToolExecutor(
         TurnJournal journal,
@@ -192,6 +193,14 @@ public sealed class LocalToolExecutor : IToolExecutor
         _session.Meta.TokenTracker?.RecordToolUse(call.Name);
         _journal.RecordToolStarted(call.Id);
 
+        // The static WriteToolStart line above is a one-shot print — with nothing further until
+        // the tool returns, a slow tool (a long Bash command, a sub-agent, a big fetch) leaves the
+        // terminal looking frozen. Show a live indicator for the duration of execution instead.
+        // ponytail: label reflects whichever concurrent call started the indicator first when
+        // several concurrency-safe tools overlap; upgrade to a per-call label if that's confusing.
+        if (System.Threading.Interlocked.Increment(ref _activeToolCount) == 1)
+            _output.ShowWaitingIndicator($"Running {call.Name}");
+
         // OnToolStartAsync already called above (before permission check), don't call again
         var stopwatch = Stopwatch.StartNew();
 
@@ -304,6 +313,8 @@ public sealed class LocalToolExecutor : IToolExecutor
         finally
         {
             timeoutCts?.Dispose();
+            if (System.Threading.Interlocked.Decrement(ref _activeToolCount) == 0)
+                _output.ClearWaitingIndicator();
         }
 
         stopwatch.Stop();
