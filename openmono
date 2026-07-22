@@ -20,7 +20,8 @@ fi
 while [[ -L "$OPENMONO_SCRIPT" ]]; do
     OPENMONO_SCRIPT="$(readlink -f "$OPENMONO_SCRIPT" 2>/dev/null || readlink "$OPENMONO_SCRIPT")"
 done
-REPO_DIR="$(cd "$(dirname "$OPENMONO_SCRIPT")" && pwd)"
+# Prefer physical path so Colima/Docker bind mounts work when ~/openmono.ai is a symlink.
+REPO_DIR="$(cd "$(dirname "$OPENMONO_SCRIPT")" && pwd -P)"
 DOCKER_DIR="$REPO_DIR/docker"
 LLAMA_PORT="${LLAMA_PORT:-7474}"
 OPENMONO_VERSION="$(cat "$REPO_DIR/VERSION" 2>/dev/null | tr -d '[:space:]' || echo "unknown")"
@@ -52,57 +53,125 @@ err()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # ── Docker accessibility check ─────────────────────────────────────────────────
 
+_colima_sock() {
+    local sock="${HOME}/.colima/default/docker.sock"
+    [[ -S "$sock" ]] && printf '%s' "$sock" && return 0
+    sock="${HOME}/.colima/docker.sock"
+    [[ -S "$sock" ]] && printf '%s' "$sock" && return 0
+    return 1
+}
+
+_prefer_colima() {
+    # Prefer Colima when DOCKER_HOST / context already point at it, or when an
+    # env override says so. Docker.app may still be installed but unused.
+    [[ "${OPENMONO_DOCKER_RUNTIME:-}" == "colima" ]] && return 0
+    [[ "${DOCKER_HOST:-}" == *colima* ]] && return 0
+    local ctx
+    ctx="$(docker context show 2>/dev/null || true)"
+    [[ "$ctx" == "colima" ]] && return 0
+    return 1
+}
+
+_wait_docker() {
+    local seconds="${1:-60}"
+    local i
+    for i in $(seq 1 "$seconds"); do
+        if docker info &>/dev/null 2>&1; then
+            ok "Docker is ready"
+            return 0
+        fi
+        sleep 1
+        printf "."
+    done
+    echo ""
+    return 1
+}
+
+_start_colima_docker() {
+    command -v colima &>/dev/null || return 1
+    info "Starting Colima..."
+    # Point docker at Colima before start so wait checks the right socket.
+    local sock="${HOME}/.colima/default/docker.sock"
+    export DOCKER_HOST="unix://${sock}"
+    if ! colima start; then
+        err "Colima failed to start. Try: colima status"
+        return 1
+    fi
+    # Activate colima docker context when available (best-effort).
+    docker context use colima &>/dev/null || true
+    export DOCKER_HOST="unix://${sock}"
+    if _wait_docker 45; then
+        return 0
+    fi
+    err "Colima started but docker daemon is not accessible. Try: colima status"
+    return 1
+}
+
+_start_docker_desktop() {
+    [[ -d "/Applications/Docker.app" ]] || return 1
+    info "Starting Docker Desktop..."
+    # Avoid fighting an explicit Colima DOCKER_HOST.
+    if [[ "${DOCKER_HOST:-}" == *colima* ]]; then
+        unset DOCKER_HOST
+    fi
+    open /Applications/Docker.app
+    info "Waiting for Docker daemon (up to 60s)..."
+    if _wait_docker 60; then
+        return 0
+    fi
+    err "Docker Desktop started but daemon is not accessible"
+    return 1
+}
+
 _ensure_docker() {
+    # If Colima is preferred and its socket exists, force DOCKER_HOST so
+    # `docker info` doesn't hit a dead Docker Desktop socket.
+    if _prefer_colima || [[ -n "$( _colima_sock 2>/dev/null || true )" ]]; then
+        local sock
+        if sock="$(_colima_sock)"; then
+            export DOCKER_HOST="unix://${sock}"
+        elif [[ "${DOCKER_HOST:-}" != *colima* ]]; then
+            export DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock"
+        fi
+    fi
+
     if docker info &>/dev/null 2>&1; then
         return 0
     fi
 
+    local _OS
     _OS=$(uname -s)
     warn "Docker daemon is not accessible. Attempting to start..."
 
     if [ "$_OS" = "Darwin" ]; then
-        # Try Docker Desktop first (if installed)
-        if [ -d "/Applications/Docker.app" ]; then
-            info "Starting Docker Desktop..."
-            open /Applications/Docker.app
-            info "Waiting for Docker daemon (up to 60s)..."
-            for i in $(seq 1 60); do
-                if docker info &>/dev/null 2>&1; then
-                    ok "Docker is ready"
-                    return 0
-                fi
-                sleep 1
-                printf "."
-            done
-            echo ""
-            err "Docker Desktop started but daemon is not accessible. Try: colima status"
-        # Fallback to Colima if Docker Desktop is not installed
-        elif command -v colima &>/dev/null; then
-            info "Starting Colima..."
-            if colima start 2>/dev/null; then
-                for i in $(seq 1 15); do
-                    docker info &>/dev/null 2>&1 && { ok "Docker is ready"; return 0; }
-                    sleep 1
-                done
-            fi
-            err "Colima failed to start. Try: colima status"
-        else
-            err "Neither Docker Desktop nor Colima is available. Try: openmono setup"
+        # Prefer Colima when configured / already the intended runtime.
+        if _prefer_colima || [[ "${OPENMONO_DOCKER_RUNTIME:-}" == "colima" ]]; then
+            _start_colima_docker && return 0
         fi
+
+        # If Colima is installed, try it before Docker Desktop — Desktop.app
+        # often sits installed but unused while DOCKER_HOST points at Colima.
+        if command -v colima &>/dev/null; then
+            _start_colima_docker && return 0
+        fi
+
+        # Last resort: Docker Desktop (only if Colima unavailable/failed).
+        if [[ -d "/Applications/Docker.app" ]]; then
+            _start_docker_desktop && return 0
+        fi
+
+        err "Neither Docker Desktop nor Colima is available. Try: openmono setup"
     else
         info "Starting Docker daemon..."
         if sudo systemctl start docker 2>/dev/null; then
-            for i in $(seq 1 15); do
-                docker info &>/dev/null 2>&1 && { ok "Docker is ready"; return 0; }
-                sleep 1
-            done
+            _wait_docker 15 && return 0
             err "Docker started but daemon is not accessible"
         else
             err "Failed to start Docker. Try: sudo systemctl start docker"
         fi
     fi
 
-    exit 1
+    return 1
 }
 
 # ── docker/.env helpers (server-side service registry) ──────────────────────────
