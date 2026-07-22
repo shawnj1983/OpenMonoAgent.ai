@@ -4,11 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace OpenMono.Acp;
 
-
-
-
-
-
 public static class AcpServer
 {
     public static WebApplication Build(AcpServerSettings settings, IServiceCollection services)
@@ -17,16 +12,6 @@ public static class AcpServer
 
         foreach (var d in services)
             builder.Services.Add(d);
-
-
-
-
-
-
-
-
-
-
 
         builder.WebHost.ConfigureKestrel(o =>
         {

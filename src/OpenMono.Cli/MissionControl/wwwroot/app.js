@@ -206,7 +206,6 @@ async function loadSessionMessages(sessionId) {
 
 async function loadSessionMeta(sessionId) {
   const session = await api(`/api/v1/sessions/${sessionId}`);
-  $("plan-mode-toggle").checked = !!session.plan_mode;
   els.activeSessionTitle.textContent = session.session_id;
   els.activeSessionMeta.textContent = `${session.model} · started ${formatTime(session.started_at)} · ${session.turn_count} turns`;
 }
