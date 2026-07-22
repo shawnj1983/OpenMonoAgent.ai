@@ -4,12 +4,6 @@ using OpenMono.Config;
 
 namespace OpenMono.Acp;
 
-
-
-
-
-
-
 public sealed class AcpSessionStore : IDisposable
 {
     private readonly string _dir;
@@ -35,7 +29,6 @@ public sealed class AcpSessionStore : IDisposable
             _reaper = new Timer(_ => PurgeExpired(_ttl), null, period, period);
         }
     }
-
 
     public string Directory => _dir;
 
@@ -126,26 +119,20 @@ public sealed class AcpSessionStore : IDisposable
                 if (session is not null)
                     _sessions[session.Id] = session;
                 else
-                    Quarantine(file, "deserializer returned null");
+                    Quarantine(file);
             }
-            catch (JsonException ex)
+            catch (JsonException)
             {
-                Quarantine(file, ex.Message);
+                Quarantine(file);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-
             }
         }
     }
 
-
-
-
-
-    private void Quarantine(string path, string reason)
+    private void Quarantine(string path)
     {
-        _ = reason;
         try
         {
             var corruptPath = path + ".corrupt";
@@ -154,15 +141,11 @@ public sealed class AcpSessionStore : IDisposable
         }
         catch
         {
-
-
         }
     }
 
     private static string ResolveSessionsDirectory(AppConfig cfg, AcpServerSettings settings)
     {
-
-
         try
         {
             System.IO.Directory.CreateDirectory(settings.SessionsDirectory);

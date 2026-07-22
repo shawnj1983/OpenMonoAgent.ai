@@ -15,6 +15,8 @@ public sealed class WorkosAuthSetupTests : IAsyncLifetime
         Path.GetTempPath(),
         "openmono-workos-auth-" + Guid.NewGuid().ToString("N")[..8]);
     private readonly CancellationTokenSource _cts = new();
+    private string? _origWorkspaceEnv;
+    private string? _origAgentIdEnv;
     private WebApplication _app = null!;
     private HttpClient _client = null!;
     private int _port;
@@ -23,6 +25,11 @@ public sealed class WorkosAuthSetupTests : IAsyncLifetime
     {
         Directory.CreateDirectory(_tempDir);
         _port = GetFreePort();
+
+        _origWorkspaceEnv = Environment.GetEnvironmentVariable("HOST_WORKSPACE_PATH");
+        _origAgentIdEnv = Environment.GetEnvironmentVariable("ACP_AGENT_ID");
+        Environment.SetEnvironmentVariable("HOST_WORKSPACE_PATH", _tempDir);
+        Environment.SetEnvironmentVariable("ACP_AGENT_ID", "agt_workos_test");
 
         var settings = new AcpServerSettings
         {
@@ -41,11 +48,18 @@ public sealed class WorkosAuthSetupTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddSingleton(new AppConfig { DataDirectory = _tempDir });
         services.AddSingleton(settings);
+        services.AddSingleton(sp => new AcpSessionStore(
+            sp.GetRequiredService<AppConfig>(),
+            sp.GetRequiredService<AcpServerSettings>(),
+            startReaper: false));
         services.AddSingleton(new AcpLockFileWriter(settings, _tempDir));
 
         _app = AcpServer.Build(settings, services);
         await _app.StartAsync(_cts.Token);
-        _client = new HttpClient { BaseAddress = new Uri($"http://localhost:{_port}") };
+        _client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+        {
+            BaseAddress = new Uri($"http://localhost:{_port}"),
+        };
     }
 
     public async Task DisposeAsync()
@@ -54,6 +68,10 @@ public sealed class WorkosAuthSetupTests : IAsyncLifetime
         await _cts.CancelAsync();
         try { await _app.StopAsync(); } catch { }
         await _app.DisposeAsync();
+
+        Environment.SetEnvironmentVariable("HOST_WORKSPACE_PATH", _origWorkspaceEnv);
+        Environment.SetEnvironmentVariable("ACP_AGENT_ID", _origAgentIdEnv);
+
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
