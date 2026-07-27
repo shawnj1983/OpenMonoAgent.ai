@@ -57,3 +57,9 @@ That is how Tailscale is configured globally for Cursor.
 | `.env` | Symlink → `~/jarvis/secrets/api-keys.env` (paste keys here locally) |
 | `doorway.html` / `API Keys Door.html` | Workspace HTML hub |
 | `.env.example` | Names only, no secrets |
+
+## Voice input (no key required)
+- **Wispr Flow** — AI dictation in any app. Press `fn` to speak.
+  - Install: [wisprflow.ai/downloads](https://wisprflow.ai/downloads)
+  - Direct: [Apple Silicon](https://dl.wisprflow.ai/mac-apple/latest) · [Intel](https://dl.wisprflow.ai/mac-intel/latest)
+  - Current status: installed at `/Applications/Wispr Flow.app`

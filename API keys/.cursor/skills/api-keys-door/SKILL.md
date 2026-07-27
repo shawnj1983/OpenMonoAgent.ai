@@ -17,9 +17,9 @@ The actual HTML doorway lives in the **file Explorer** and the browser — not a
 
 ## When invoked
 
-1. Run `~/jarvis/scripts/open-api-keys-doorway.sh` (browser).
+1. Run `~/jarvis/scripts/open-api-keys-doorway.sh` (browser; Expansion → Projects → workspace fallback).
 2. Open workspace `doorway.html` / `API Keys Door.html` in the editor (`open_resource`).
-3. Prefer Expansion hub when mounted: `/Volumes/Expansion/api-keys-doorway/index.html`.
+3. Also open `API Keys Door (browser hub).html` if present; use `open` for Expansion/Projects (outside `open_resource` scope).
 4. Confirm click path to Shawn in plain text.
 
 ## Paths
@@ -27,8 +27,12 @@ The actual HTML doorway lives in the **file Explorer** and the browser — not a
 | What | Where |
 |------|--------|
 | Browser hub | `/Volumes/Expansion/api-keys-doorway/index.html` |
+| Projects fallback | `~/Projects/api-keys-doorway/index.html` |
 | Open script | `~/jarvis/scripts/open-api-keys-doorway.sh` |
-| Workspace HTML | `API keys/doorway.html` (also `API Keys Door.html`) |
+| Workspace HTML | `doorway.html` / `API Keys Door.html` |
+| Expansion pointer | `API Keys Door (browser hub).html` |
+| Documents notes | `~/Documents/AI Keys/` (paste notes, not the hub) |
+| Voice input (no key) | Wispr Flow — `/Applications/Wispr Flow.app`; download at `https://wisprflow.ai/downloads` |
 | Vault | `~/jarvis/secrets/api-keys.env` |
 | Customize command | Left → Customize → Commands → **API Keys Door** |
 | Customize skill | Left → Customize → Skills → **api-keys-door** |
