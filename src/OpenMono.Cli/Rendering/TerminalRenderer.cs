@@ -101,7 +101,7 @@ public sealed class TerminalRenderer : IRenderer
         var panel = new Panel(grid)
         {
             Border = BoxBorder.Rounded,
-            BorderStyle = new Style(Color.FromInt32(0xA3FF66)),
+            BorderStyle = new Style(new Color(0xA3, 0xFF, 0x66)),
             Padding = new Padding(1, 0),
             Header = new PanelHeader(" [bold]Ready[/] "),
         };
@@ -109,7 +109,7 @@ public sealed class TerminalRenderer : IRenderer
         _console.WriteLine();
 
         // First-run tips (classic path)
-        _console.MarkupLine("[#b48cff]✦ Pro tips:[/] [dim]/genius[/] for 10× deep autopsy (Claude-Code 1M-style full ctx on any model). [/] [dim]/plan[/] + [/] [dim]/think[/] for visible reasoning. Use OpenRouter free 1M models by pointing endpoint + large contextSize.[/]");
+        _console.MarkupLine("[#b48cff]✦ Pro tips:[/] [dim]/genius[/] for 10× deep autopsy (Claude-Code 1M-style full ctx on any model). [dim]/plan[/] + [dim]/think[/] for visible reasoning. Use OpenRouter free 1M models by pointing endpoint + large contextSize.");
         _console.WriteLine();
     }
 
