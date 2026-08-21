@@ -39,6 +39,17 @@ public sealed class TerminalRenderer : IRenderer
 
     public string ReadInput()
     {
+        // Non-interactive / piped stdin (CI, scripts, `echo ... | openmono --classic`).
+        // Spectre's TextPrompt throws in non-interactive mode, so read raw lines and
+        // signal end-of-input by cancelling — the caller treats that as "exit".
+        if (Console.IsInputRedirected)
+        {
+            var piped = Console.ReadLine();
+            if (piped is null)
+                throw new OperationCanceledException();
+            return piped;
+        }
+
         if (_commandInput is not null)
         {
             try

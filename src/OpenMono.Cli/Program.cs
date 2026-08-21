@@ -18,6 +18,7 @@ using OpenMono.Tools;
 using OpenMono.Utils;
 
 string? endpoint = null, model = null, workdir = null, configPath = null;
+string? promptArg = null;
 var verbose = false;
 var showDetail = false;
 bool? useTui = null;
@@ -77,6 +78,7 @@ for (var i = 0; i < args.Length; i++)
         case "--model" when next is not null: model = next; i++; break;
         case "--workdir" when next is not null: workdir = next; i++; break;
         case "--config" when next is not null: configPath = next; i++; break;
+        case "--prompt" or "-p" when next is not null: promptArg = next; i++; break;
         case "--verbose" or "-v": verbose = true; break;
         case "--detail": showDetail = true; break;
         case "--tui": useTui = true; break;
@@ -101,6 +103,7 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine("  --model <name>     Model name (default: auto-detected from server via /props)");
             Console.WriteLine("  --workdir <path>   Working directory (default: current directory)");
             Console.WriteLine("  --config <path>    Path to settings.json override");
+            Console.WriteLine("  --prompt, -p <txt> Run a single turn with <txt>, then exit (headless/CI one-shot)");
             Console.WriteLine("  --verbose, -v      Show LLM request/response debug info");
             Console.WriteLine("  --detail           Show the right-hand detail panel in the TUI");
             Console.WriteLine("  --tui              Force full-screen TUI mode (default for interactive)");
@@ -148,13 +151,13 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 
-await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui, noAcp, acpPort, acpOnly, genius);
+await RunAgentAsync(endpoint, model, workdir, configPath, verbose, showDetail, useTui, noAcp, acpPort, acpOnly, genius, promptArg);
 return 0;
 
 static bool EnvFlag_Truthy(string? v) =>
     v is not null && (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase));
 
-static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null, bool noAcp = false, int? acpPort = null, bool acpOnly = false, bool genius = false)
+static async Task RunAgentAsync(string? endpoint, string? model, string? workdir, string? configPath, bool verbose = false, bool showDetail = false, bool? useTui = null, bool noAcp = false, int? acpPort = null, bool acpOnly = false, bool genius = false, string? oneShotPrompt = null)
 {
 
     IRenderer renderer = new TerminalRenderer();
@@ -516,17 +519,30 @@ static async Task RunAgentAsync(string? endpoint, string? model, string? workdir
         lastCtrlCExitTime = now;
     };
 
+    var oneShotPending = !string.IsNullOrWhiteSpace(oneShotPrompt);
+
     while (true)
     {
         string input;
-        try
+        if (oneShotPrompt is not null)
         {
-            input = InputSanitizer.SanitizeUserInput(renderer.ReadInput());
+            // One-shot mode (--prompt): run exactly one turn, then exit.
+            if (!oneShotPending)
+                break;
+            oneShotPending = false;
+            input = InputSanitizer.SanitizeUserInput(oneShotPrompt);
         }
-        catch (OperationCanceledException)
+        else
         {
+            try
+            {
+                input = InputSanitizer.SanitizeUserInput(renderer.ReadInput());
+            }
+            catch (OperationCanceledException)
+            {
 
-            break;
+                break;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(input))

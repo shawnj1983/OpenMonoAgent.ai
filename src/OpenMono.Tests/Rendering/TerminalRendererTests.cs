@@ -31,4 +31,45 @@ public sealed class TerminalRendererTests
         act.Should().NotThrow("the welcome panel must render without invalid color errors");
         output.ToString().Should().Contain("OpenMono.ai");
     }
+
+    [Fact]
+    public void ReadInput_NonInteractiveStdin_ReturnsPipedLine()
+    {
+        // Under `dotnet test` stdin is redirected, so ReadInput takes the
+        // non-interactive path and reads a raw line instead of using Spectre's
+        // TextPrompt (which throws in non-interactive mode).
+        var original = Console.In;
+        try
+        {
+            Console.SetIn(new StringReader("what is 2+2?\n"));
+            var renderer = new TerminalRenderer();
+
+            renderer.ReadInput().Should().Be("what is 2+2?");
+        }
+        finally
+        {
+            Console.SetIn(original);
+        }
+    }
+
+    [Fact]
+    public void ReadInput_NonInteractiveStdin_ThrowsAtEndOfInput()
+    {
+        // EOF on piped stdin must surface as OperationCanceledException so the
+        // agent loop exits cleanly instead of crashing.
+        var original = Console.In;
+        try
+        {
+            Console.SetIn(new StringReader(string.Empty));
+            var renderer = new TerminalRenderer();
+
+            var act = () => renderer.ReadInput();
+
+            act.Should().Throw<OperationCanceledException>();
+        }
+        finally
+        {
+            Console.SetIn(original);
+        }
+    }
 }
