@@ -38,10 +38,17 @@ public sealed class OpenAiCompatClient : ILlmClient, IDisposable
     private readonly string _model;
 
     public OpenAiCompatClient(LlmConfig config)
+        : this(config, new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+    {
+    }
+
+    // Test seam: allows injecting an HttpClient backed by a stub handler so the
+    // streaming/tool-call/retry logic can be unit-tested without a live server.
+    internal OpenAiCompatClient(LlmConfig config, HttpClient http)
     {
         _endpoint = config.Endpoint.TrimEnd('/');
         _model = config.Model;
-        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        _http = http;
         EnsureRequestGate(config.MaxConcurrentRequests);
     }
 

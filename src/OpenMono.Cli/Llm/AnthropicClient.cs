@@ -21,10 +21,17 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
     public Action<string>? OnDebug { get; set; }
 
     public AnthropicClient(ProviderConfig config)
+        : this(config, new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+    {
+    }
+
+    // Test seam: allows injecting an HttpClient backed by a stub handler so the
+    // streaming/tool-use/retry logic can be unit-tested without a live server.
+    internal AnthropicClient(ProviderConfig config, HttpClient http)
     {
         _endpoint = (config.Endpoint ?? "https://api.anthropic.com").TrimEnd('/');
         _apiKey = config.ApiKey ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") ?? "";
-        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        _http = http;
         _http.DefaultRequestHeaders.Add("x-api-key", _apiKey);
         _http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
     }
