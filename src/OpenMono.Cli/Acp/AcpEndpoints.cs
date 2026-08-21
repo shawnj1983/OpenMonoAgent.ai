@@ -8,16 +8,12 @@ using OpenMono.Session;
 
 namespace OpenMono.Acp;
 
-
-
-
-
-
 public static class AcpEndpoints
 {
     public static void Map(WebApplication app)
     {
         app.MapGet("/api/v1/discovery", GetDiscovery);
+        app.MapGet("/api/v1/sessions", ListSessions);
         app.MapPost("/api/v1/sessions", PostSession);
         app.MapGet("/api/v1/sessions/{id}", GetSession);
         app.MapGet("/api/v1/sessions/{id}/messages", GetMessages);
@@ -25,11 +21,10 @@ public static class AcpEndpoints
         app.MapDelete("/api/v1/sessions/{id}", DeleteSession);
     }
 
-
-
-    private static IResult GetDiscovery(AcpLockFileWriter lockfile)
+    private static IResult GetDiscovery(AcpLockFileWriter lockfile, AcpServerSettings settings)
     {
         var uptime = (int)(DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalSeconds;
+        var auth = settings.Auth ?? new WorkosAuthSettings();
         return Results.Ok(new
         {
             version = "1.0.0",
@@ -38,10 +33,33 @@ public static class AcpEndpoints
             container_workspace = lockfile.ContainerWorkspace,
             status = "ready",
             uptime_seconds = uptime,
+            mission_control = "/",
+            auth = new
+            {
+                enabled = auth.IsConfigured,
+                login_url = auth.IsConfigured ? "/auth/login" : null,
+            },
         });
     }
 
+    private static IResult ListSessions(AcpSessionStore store)
+    {
+        var sessions = store.ListActive().Select(ProjectSessionSummary).ToList();
+        return Results.Ok(new { sessions });
+    }
 
+    private static object ProjectSessionSummary(AcpSession session) => new
+    {
+        session_id = session.Id,
+        model = session.Model,
+        started_at = session.StartedAt.ToString("o"),
+        last_activity_at = session.LastActivityAt.ToString("o"),
+        turn_count = session.TurnCount,
+        plan_mode = session.PlanMode,
+        message_count = session.Messages.Count,
+        pending_count = session.PendingIds.Count,
+        busy = session.TurnLock.CurrentCount == 0,
+    };
 
     private static async Task<IResult> PostSession(HttpContext ctx, AcpSessionStore store, AppConfig config)
     {
@@ -62,8 +80,6 @@ public static class AcpEndpoints
         return Results.Ok(new { session_id = session.Id, model = session.Model });
     }
 
-
-
     private static IResult GetSession(string id, AcpSessionStore store)
     {
         var session = store.TryGet(id);
@@ -78,16 +94,12 @@ public static class AcpEndpoints
         });
     }
 
-
-
     private static IResult GetMessages(string id, AcpSessionStore store)
     {
         var session = store.TryGet(id);
         if (session is null) return Results.NotFound();
         return Results.Ok(new MessagesEnvelope { Messages = ProjectMessages(session.Messages) });
     }
-
-
 
     private static async Task PostTurn(
         HttpContext ctx,
@@ -101,8 +113,6 @@ public static class AcpEndpoints
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
-
-
 
         if (!await session.TurnLock.WaitAsync(0, ctx.RequestAborted))
         {
@@ -149,9 +159,6 @@ public static class AcpEndpoints
                 }
                 else if (root.TryGetProperty("abort", out var abortEl) && abortEl.GetBoolean())
                 {
-
-
-
                     session.CancelAllPending();
                     ctx.Response.StatusCode = StatusCodes.Status204NoContent;
                 }
@@ -170,10 +177,6 @@ public static class AcpEndpoints
         }
         catch (InvalidOperationException ex)
         {
-
-
-
-
             if (ctx.Response.HasStarted)
             {
                 var writer = new SseWriter(ctx.Response.Body, ctx.RequestAborted);
@@ -193,8 +196,6 @@ public static class AcpEndpoints
         }
     }
 
-
-
     private static IResult DeleteSession(string id, AcpSessionStore store)
     {
         var session = store.TryGet(id);
@@ -204,20 +205,12 @@ public static class AcpEndpoints
         return Results.NoContent();
     }
 
-
-
     private static void StartSseResponse(HttpContext ctx)
     {
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers["Cache-Control"] = "no-cache";
         ctx.Response.Headers["X-Accel-Buffering"] = "no";
     }
-
-
-
-
-
-
 
     internal static List<HistoryMessageDto> ProjectMessages(IReadOnlyList<Message> messages)
     {
@@ -287,8 +280,6 @@ public static class AcpEndpoints
     }
 
     private static readonly JsonSerializerOptions JsonDefaults = new(JsonSerializerDefaults.Web);
-
-
 
     internal sealed record HistoryMessageDto
     {
